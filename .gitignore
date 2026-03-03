@@ -45,6 +45,11 @@ logs/
 # OS related
 .DS_Store
 Thumbs.db
+*.exe
+*.dll
+*.so
+*.dylib
+*.node
 
 # Project-specific / Backups
 tmp/
