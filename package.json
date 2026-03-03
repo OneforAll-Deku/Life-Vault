@@ -3,10 +3,11 @@
     "version": "1.0.0",
     "private": true,
     "scripts": {
-        "install-backend": "cd LV/backEnd && npm install",
-        "install-frontend": "cd LV/lifevault-journey-builder && npm install",
-        "build-frontend": "cd LV/lifevault-journey-builder && npm run build",
-        "start-backend": "cd LV/backEnd && node src/server.js",
-        "heroku-postbuild": "npm run install-backend && npm run install-frontend && npm run build-frontend"
+        "install-backend": "npm install --prefix LV/backEnd",
+        "install-frontend": "npm install --prefix LV/lifevault-journey-builder",
+        "start": "npm run start-backend",
+        "start-backend": "npm start --prefix LV/backEnd",
+        "build": "npm run install-backend",
+        "postinstall": "npm run install-backend"
     }
 }
