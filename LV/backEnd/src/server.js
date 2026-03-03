@@ -4,7 +4,6 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import app from './app.js';
-// import connectDB from './config/database.js';
 import aptosService from './services/aptosService.js';
 import { connectPinecone } from './config/pinecone.js';
 // import { seedDemoBusinessUser } from './utils/seedDemoBusinessUser.js';
@@ -21,11 +20,6 @@ let server;
 const initializeServices = async () => {
   try {
     console.log('\n🚀 Starting Life Vault Backend...\n');
-
-    // 1. Connect to MongoDB (DISABLED)
-    // console.log('📊 Connecting to MongoDB...');
-    // await connectDB();
-    // console.log('✅ MongoDB connected\n');
 
     /* 
     // Seed demo business account (dev convenience)
@@ -49,7 +43,6 @@ const initializeServices = async () => {
     console.log('🔍 Verifying environment variables...');
     const requiredEnvVars = [
       'JWT_SECRET',
-      // 'MONGODB_URI',
       'APTOS_NETWORK',
       'PINECONE_API_KEY'
     ];
@@ -137,13 +130,6 @@ const gracefulShutdown = async (signal) => {
       console.log('🔌 HTTP server closed');
 
       try {
-        // Close database connection (MONGODB DISABLED)
-        /*
-        const mongoose = await import('mongoose');
-        await mongoose.default.connection.close();
-        console.log('🗄️  Database connection closed');
-        */
-
         console.log('✅ Graceful shutdown completed');
         process.exit(0);
       } catch (error) {

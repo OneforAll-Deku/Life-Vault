@@ -36,9 +36,7 @@ export const createQuest = async (req, res, next) => {
     let sanitizedRewards = { ...(rewards || {}) };
 
     if (sanitizedRewards.badgeId) {
-      const { Types } = await import('mongoose');
-
-      if (!Types.ObjectId.isValid(sanitizedRewards.badgeId)) {
+      if (!/^[0-9a-fA-F]{24}$/.test(sanitizedRewards.badgeId)) {
         // Option A: Return an error
         return res.status(400).json({
           success: false,

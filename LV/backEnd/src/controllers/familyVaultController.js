@@ -1,7 +1,6 @@
 import FamilyVault from '../models/FamilyVault.js';
 import Memory from '../models/Memory.js';
 import User from '../models/User.js';
-import mongoose from 'mongoose';
 
 // ─── Create Vault ──────────────────────────────────────────────
 export const createVault = async (req, res, next) => {

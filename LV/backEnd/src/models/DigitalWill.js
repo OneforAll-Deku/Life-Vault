@@ -171,7 +171,7 @@ class DigitalWill {
     }
 }
 
-// Mocking mongoose static methods used in controllers
+// Setup static methods
 DigitalWill.create = async (data) => {
     const will = new DigitalWill(data);
     await will.save();

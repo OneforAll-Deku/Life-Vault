@@ -94,7 +94,7 @@ class User {
   }
 
   select(fields) {
-    // Mocking mongoose select behavior
+    // Mocking select behavior
     return this;
   }
 }

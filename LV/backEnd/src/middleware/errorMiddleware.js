@@ -33,20 +33,20 @@ export const errorHandler = (err, req, res, next) => {
     method: req.method
   });
 
-  // Mongoose bad ObjectId
+  // Bad ObjectId (legacy handling)
   if (err.name === 'CastError') {
     const message = 'Resource not found';
     error = new APIError(message, 404);
   }
 
-  // Mongoose duplicate key
+  // Duplicate key (legacy handling)
   if (err.code === 11000) {
     const field = Object.keys(err.keyValue)[0];
     const message = `${field} already exists`;
     error = new APIError(message, 400);
   }
 
-  // Mongoose validation error
+  // Validation error (legacy handling)
   if (err.name === 'ValidationError') {
     const message = Object.values(err.errors).map(e => e.message).join(', ');
     error = new APIError(message, 400);
