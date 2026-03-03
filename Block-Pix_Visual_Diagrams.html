@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Block-Pix | Visual Data Flow Diagrams</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=Inter:wght@400;700&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #050505;
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --accent-color: #00f2ff;
+            --accent-glow: rgba(0, 242, 255, 0.3);
+            --text-primary: #ffffff;
+            --text-secondary: #b0b0b0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-image:
+                radial-gradient(circle at 10% 20%, rgba(0, 242, 255, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(182, 0, 255, 0.05) 0%, transparent 40%);
+            min-height: 100vh;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 60px;
+            max-width: 800px;
+        }
+
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 3.5rem;
+            margin: 0;
+            background: linear-gradient(90deg, #00f2ff, #b600ff);
+            -webkit-background-clip: text;
+            -webkit-fill-color: transparent;
+            letter-spacing: -2px;
+        }
+
+        p.subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            margin-top: 10px;
+        }
+
+        .hero-img {
+            width: 100%;
+            max-width: 1000px;
+            border-radius: 32px;
+            margin-bottom: 60px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--glass-border);
+        }
+
+        .container {
+            max-width: 1000px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 60px;
+        }
+
+        .diagram-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 32px;
+            padding: 50px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), border-color 0.3s ease;
+        }
+
+        .diagram-card:hover {
+            transform: translateY(-8px);
+            border-color: rgba(0, 242, 255, 0.5);
+        }
+
+        h2 {
+            font-family: 'Outfit', sans-serif;
+            color: var(--accent-color);
+            font-size: 2rem;
+            margin-top: 0;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        h2::before {
+            content: '';
+            display: block;
+            width: 10px;
+            height: 30px;
+            background: linear-gradient(#00f2ff, #b600ff);
+            border-radius: 5px;
+            box-shadow: 0 0 15px var(--accent-glow);
+        }
+
+        .mermaid {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 30px;
+            border-radius: 20px;
+            display: flex;
+            justify-content: center;
+            overflow-x: auto;
+        }
+
+        .mermaid-container {
+            width: 100%;
+        }
+
+        footer {
+            margin-top: 100px;
+            padding: 40px;
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            width: 100%;
+            border-top: 1px solid var(--glass-border);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 100px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--accent-color);
+            margin-bottom: 15px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2.5rem;
+            }
+
+            .diagram-card {
+                padding: 25px;
+            }
+        }
+    </style>
+    <script>
+        mermaid.initialize({
+            theme: 'dark',
+            startOnLoad: true,
+            securityLevel: 'loose',
+            themeVariables: {
+                primaryColor: '#1a1a1a',
+                primaryTextColor: '#fff',
+                primaryBorderColor: '#00f2ff',
+                lineColor: '#00f2ff',
+                secondaryColor: '#2d2d2d',
+                tertiaryColor: '#121212',
+                edgeLabelBackground: '#050505',
+                nodeBorder: '#00f2ff'
+            }
+        });
+    </script>
+</head>
+
+<body>
+
+    <header>
+        <div class="badge">Architecture V1.0</div>
+        <h1>Block-Pix</h1>
+        <p class="subtitle">A visual deep-dive into the decentralized data architecture and secure memory protocols of
+            the Block-Pix ecosystem.</p>
+    </header>
+
+    <img src="block_pix_infographic.png" alt="Block-Pix Infographic" class="hero-img">
+
+    <div class="container">
+        <!-- Level 0 -->
+        <div class="diagram-card">
+            <h2>Level 0: Context Overview</h2>
+            <div class="mermaid-container">
+                <div class="mermaid">
+                    graph TD
+                    User((User))
+                    Blockchain((Blockchain - Aptos/BTC))
+                    IPFS((IPFS - Pinata))
+
+                    User -- "Login Credentials / Wallet Signature" --> BP(Block-Pix System)
+                    User -- "Upload Media / Create Will" --> BP
+
+                    BP -- "Authentication Status / Dashboard Data" --> User
+                    BP -- "Notarization Request / Tx Hash" --> Blockchain
+                    BP -- "Media Files / Pinning Req" --> IPFS
+
+                    Blockchain -- "Transaction Confirmation" --> BP
+                    IPFS -- "Content Identifier - CID" --> BP
+                </div>
+            </div>
+        </div>
+
+        <!-- Level 1 -->
+        <div class="diagram-card">
+            <h2>Level 1: Core Systems</h2>
+            <div class="mermaid-container">
+                <div class="mermaid">
+                    graph TD
+                    User((User))
+                    DB[(MongoDB Metadata)]
+                    Blockchain((Aptos Blockchain))
+                    IPFS((IPFS Storage))
+
+                    subgraph "Block-Pix Processing Core"
+                    P1[1.0 Authentication Service]
+                    P2[2.0 Memory Management]
+                    P3[3.0 Legacy & Will Service]
+                    P4[4.0 Story & Journey Service]
+                    end
+
+                    User -- "Sign Message" --> P1
+                    P1 -- "Verify & Issue JWT" --> User
+                    P1 -- "User Profile" --> DB
+
+                    User -- "Media Upload" --> P2
+                    P2 -- "Store CID & Metadata" --> DB
+                    P2 -- "Upload File" --> IPFS
+                    P2 -- "Anchor Hash" --> Blockchain
+
+                    User -- "Set Triggers / Beneficiaries" --> P3
+                    P3 -- "Will Config" --> DB
+                    P3 -- "Monitor Activity" --> P3
+
+                    User -- "View Timeline" --> P4
+                    P4 -- "Fetch Stories" --> DB
+                </div>
+            </div>
+        </div>
+
+        <!-- Level 2.1 -->
+        <div class="diagram-card">
+            <h2>Level 2.1: Memory Pipeline</h2>
+            <div class="mermaid-container">
+                <div class="mermaid">
+                    graph LR
+                    User((User))
+                    IPFS((IPFS Gateway))
+                    DB[(Database)]
+
+                    P2.1[2.1 Encryption & Buffer]
+                    P2.2[2.2 Pinata API Gateway]
+                    P2.3[2.3 Metadata Indexer]
+
+                    User -- "Raw File" --> P2.1
+                    P2.1 -- "AES-256 Blob" --> P2.2
+                    P2.2 -- "Store Request" --> IPFS
+                    IPFS -- "Return CID" --> P2.2
+                    P2.2 -- "CID + File Info" --> P2.3
+                    P2.3 -- "Save Record" --> DB
+                </div>
+            </div>
+        </div>
+
+        <!-- Level 2.2 -->
+        <div class="diagram-card">
+            <h2>Level 2.2: Legacy & Unlock Logic</h2>
+            <div class="mermaid-container">
+                <div class="mermaid">
+                    graph LR
+                    User((User))
+                    DB[(Shared State)]
+                    Email((Email SMTP))
+                    Beneficiary((Beneficiary))
+
+                    P3.1[3.1 Heartbeat Monitor]
+                    P3.2[3.2 Trigger Logic]
+                    P3.3[3.3 Multi-Sig Release]
+
+                    User -- "Heartbeat Check-in" --> P3.1
+                    P3.1 -- "Update LastActive" --> DB
+                    DB -- "Inactivity Detected" --> P3.2
+                    P3.2 -- "Send Warnings" --> Email
+                    Email -- "Warning" --> User
+
+                    P3.3 -- "Confirmation Req" --> Beneficiary
+                    Beneficiary -- "Wallet Approval" --> P3.3
+                    P3.3 -- "Unlock Shared CIDs" --> DB
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>&copy; 2026 Block-Pix System Documentation | Built with Premium Design Principles | Antigravity AI</p>
+    </footer>
+
+</body>
+
+</html>
