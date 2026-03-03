@@ -1,0 +1,79 @@
+{
+    "tech_stack": [
+        "TypeScript",
+        "React",
+        "Vite",
+        "Tailwind CSS",
+        "Shadcn UI",
+        "Aptos Wallet Adapter",
+        "BitPay Integration"
+    ],
+    "features": [
+        {
+            "name": "Wallet Connection",
+            "description": "Connects to Aptos wallets (Petra, etc.) and Bitcoin wallets.",
+            "files": [
+                "src/context/WalletContext.tsx",
+                "src/components/wallet/ConnectWalletButton.tsx",
+                "src/components/wallet/WalletAuthModal.tsx"
+            ],
+            "ui_components": [
+                {
+                    "name": "ConnectWalletButton",
+                    "description": "Button to trigger wallet connection modal."
+                },
+                {
+                    "name": "WalletAuthModal",
+                    "description": "Modal for selecting wallet and signing authentication message."
+                }
+            ]
+        },
+        {
+            "name": "Memory Creation",
+            "description": "Allows users to upload memories (images/videos) with metadata.",
+            "files": [
+                "src/components/memory/MemoryUploadModal.tsx",
+                "src/hooks/useMemories.ts"
+            ],
+            "ui_components": [
+                {
+                    "name": "MemoryUploadModal",
+                    "description": "Form for uploading memory files and details."
+                }
+            ]
+        },
+        {
+            "name": "Dashboard",
+            "description": "Displays user stats, memory timeline, and quick actions.",
+            "files": [
+                "src/pages/Dashboard.tsx",
+                "src/components/dashboard/StatsCards.tsx",
+                "src/components/dashboard/Timeline.tsx"
+            ],
+            "ui_components": [
+                {
+                    "name": "StatsCards",
+                    "description": "Cards showing memory count and wallet balances."
+                },
+                {
+                    "name": "Timeline",
+                    "description": "Chronological view of user memories."
+                }
+            ]
+        },
+        {
+            "name": "Authentication",
+            "description": "Handles user sign-in and session management.",
+            "files": [
+                "src/context/AuthContext.tsx",
+                "src/pages/SignIn.tsx"
+            ],
+            "ui_components": [
+                {
+                    "name": "SignIn",
+                    "description": "Page for user login."
+                }
+            ]
+        }
+    ]
+}

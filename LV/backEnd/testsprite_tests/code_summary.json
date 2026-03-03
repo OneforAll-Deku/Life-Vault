@@ -1,0 +1,168 @@
+{
+    "tech_stack": [
+        "JavaScript",
+        "Node.js",
+        "Express.js",
+        "MongoDB",
+        "Mongoose",
+        "Pinata (IPFS)",
+        "Aptos SDK",
+        "BitPay API"
+    ],
+    "features": [
+        {
+            "name": "Create Memory",
+            "description": "Uploads memory data (image/video + metadata) to IPFS via Pinata and saves the record in MongoDB.",
+            "files": [
+                "src/controllers/memoryController.js",
+                "src/routes/memoryRoutes.js",
+                "src/services/ipfsService.js"
+            ],
+            "api_doc": {
+                "openapi": "3.0.0",
+                "paths": {
+                    "/api/memories": {
+                        "post": {
+                            "summary": "Create a new memory",
+                            "requestBody": {
+                                "content": {
+                                    "multipart/form-data": {
+                                        "schema": {
+                                            "type": "object",
+                                            "properties": {
+                                                "file": {
+                                                    "type": "string",
+                                                    "format": "binary"
+                                                },
+                                                "title": {
+                                                    "type": "string"
+                                                },
+                                                "description": {
+                                                    "type": "string"
+                                                },
+                                                "category": {
+                                                    "type": "string"
+                                                },
+                                                "date": {
+                                                    "type": "string",
+                                                    "format": "date"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "responses": {
+                                "201": {
+                                    "description": "Memory created successfully"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "name": "Relay Memory",
+            "description": "Relays memory details, potentially for sharing or cross-chain purposes.",
+            "files": [
+                "src/controllers/memoryController.js",
+                "src/routes/memoryRoutes.js"
+            ],
+            "api_doc": {
+                "openapi": "3.0.0",
+                "paths": {
+                    "/api/memories/relay": {
+                        "post": {
+                            "summary": "Relay memory information",
+                            "responses": {
+                                "200": {
+                                    "description": "Memory relayed successfully"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "name": "User Authentication",
+            "description": "Handles user login and registration flows.",
+            "files": [
+                "src/routes/authRoutes.js",
+                "src/controllers/authController.js"
+            ],
+            "api_doc": {
+                "openapi": "3.0.0",
+                "paths": {
+                    "/api/auth/login": {
+                        "post": {
+                            "summary": "User login",
+                            "responses": {
+                                "200": {
+                                    "description": "Login successful"
+                                }
+                            }
+                        }
+                    },
+                    "/api/auth/register": {
+                        "post": {
+                            "summary": "User registration",
+                            "responses": {
+                                "201": {
+                                    "description": "User created"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "name": "Wallet Authentication",
+            "description": "Authenticates users via wallet signatures (Aptos/Bitcoin/Burner).",
+            "files": [
+                "src/routes/walletRoutes.js",
+                "src/controllers/walletController.js"
+            ],
+            "api_doc": {
+                "openapi": "3.0.0",
+                "paths": {
+                    "/api/wallet/auth": {
+                        "post": {
+                            "summary": "Authenticate with wallet signature",
+                            "requestBody": {
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "type": "object",
+                                            "properties": {
+                                                "address": {
+                                                    "type": "string"
+                                                },
+                                                "signature": {
+                                                    "type": "string"
+                                                },
+                                                "message": {
+                                                    "type": "string"
+                                                },
+                                                "publicKey": {
+                                                    "type": "string"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "responses": {
+                                "200": {
+                                    "description": "Wallet authentication successful"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}

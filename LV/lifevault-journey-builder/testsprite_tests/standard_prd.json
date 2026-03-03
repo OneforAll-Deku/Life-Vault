@@ -1,0 +1,55 @@
+{
+    "Project Overview": {
+        "Product Name": "LifeVault",
+        "Tagline": "Your life, secured on the chain.",
+        "Mission": "Provide a decentralized, secure, and permanent digital sanctuary for personal memories (stories, photos, milestones) using blockchain and IPFS technology."
+    },
+    "Target Audience": [
+        "Web3 Enthusiasts",
+        "Privacy-Conscious Individuals",
+        "Families"
+    ],
+    "Core Features": {
+        "Multi-Chain Wallet Authentication": {
+            "Aptos Integration": "Support for Petra Wallet and other Aptos-compatible wallets.",
+            "Bitcoin Support": "Integration with BitPay for Bitcoin Testnet4 authentication.",
+            "Burner Wallet": "A 'Guest Mode' for frictionless onboarding without requiring a browser extension.",
+            "Message Signing": "Secure authentication flow using cryptographic signatures."
+        },
+        "Decentralized Memory Storage": {
+            "IPFS Pinning": "Media files (images, videos) are pinned to IPFS via Pinata for permanent storage.",
+            "Metadata Management": "Memory details (title, description, category, date) stored in a secure backend database and linked via IPFS CID.",
+            "On-Chain Anchoring": "Optional ability to anchor memory hashes to the Aptos blockchain for verifiable proof of existence."
+        },
+        "Interactive User Experience": {
+            "Dynamic Dashboard": "Real-time stats showing memory count, Aptos balance, and Bitcoin wallet status.",
+            "Visual Timeline": "A chronological 'Journey Builder' to navigate through life milestones.",
+            "Quick Actions": "Instant upload and story creation tools.",
+            "Premium Design": "Glassmorphic UI with dark mode support and smooth animations."
+        }
+    },
+    "Technical Stack": {
+        "Frontend": {
+            "Framework": "React 18+ with Vite",
+            "Language": "TypeScript",
+            "Styling": "Tailwind CSS & Shadcn UI state management: React Context API (WalletContext, AuthContext)"
+        },
+        "Backend": {
+            "Server": "Node.js with Express",
+            "Database": "MongoDB with Mongoose",
+            "Security": "JWT, Helmet, Bcryptjs",
+            "Authentication": "Custom wallet signature verification (Aptos/Bitcoin)"
+        },
+        "Third-Party Services": {
+            "Storage": "Pinata (IPFS Gateway & Pinning)",
+            "Blockchain": "Aptos Labs TS SDK",
+            "Wallet Connectors": "@aptos-labs/wallet-adapter-react"
+        }
+    },
+    "Roadmap": [
+        "Social Sharing",
+        "Encryption",
+        "Cross-Chain Expansion",
+        "AI Integration"
+    ]
+}
