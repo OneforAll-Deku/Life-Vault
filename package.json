@@ -1,0 +1,12 @@
+{
+    "name": "life-vault-monorepo",
+    "version": "1.0.0",
+    "private": true,
+    "scripts": {
+        "install-backend": "cd LV/backEnd && npm install",
+        "install-frontend": "cd LV/lifevault-journey-builder && npm install",
+        "build-frontend": "cd LV/lifevault-journey-builder && npm run build",
+        "start-backend": "cd LV/backEnd && node src/server.js",
+        "heroku-postbuild": "npm run install-backend && npm run install-frontend && npm run build-frontend"
+    }
+}
