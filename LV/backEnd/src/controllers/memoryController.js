@@ -108,22 +108,25 @@ export const getMemories = async (req, res, next) => {
 
     console.log(`📋 Fetching memories for user: ${userId}`);
 
-    let results;
+    let results = [];
     if (search || category) {
       // Use semantic search or filtered search
       const queryTerm = search || category || " ";
-      results = await pineconeService.searchMemories(queryTerm, userId, parseInt(limit));
+      results = await pineconeService.searchMemories(queryTerm, userId, parseInt(limit)) || [];
     } else {
       // Just generic fetch
-      results = await pineconeService.searchMemories(" ", userId, parseInt(limit));
+      results = await pineconeService.searchMemories(" ", userId, parseInt(limit)) || [];
     }
 
-    const memories = results.map(r => ({
-      ...r.metadata,
-      _id: r.id, // Compatibility with frontend
-      id: r.id,
-      score: r.score
-    }));
+    const memories = (results || []).map(r => {
+      if (!r) return null;
+      return {
+        ...(r.metadata || r.record || r),
+        _id: r.id,
+        id: r.id,
+        score: r.score || 0
+      };
+    }).filter(Boolean);
 
     res.status(200).json({
       success: true,
@@ -159,12 +162,15 @@ export const searchMemories = async (req, res, next) => {
     console.log(`🔍 Searching Pinecone for user ${userId}: "${searchTerm}"`);
     const results = await pineconeService.searchMemories(searchTerm, userId, parseInt(limit));
 
-    const memories = results.map(r => ({
-      ...r.metadata,
-      _id: r.id,
-      id: r.id,
-      score: r.score
-    }));
+    const memories = (results || []).map(r => {
+      if (!r) return null;
+      return {
+        ...(r.metadata || r.record || r),
+        _id: r.id,
+        id: r.id,
+        score: r.score || 0
+      };
+    }).filter(Boolean);
 
     res.status(200).json({
       success: true,

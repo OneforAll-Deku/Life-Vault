@@ -36,7 +36,7 @@ import {
 } from 'lucide-react';
 
 const navLinks: { path: string; label: string; icon: LucideIcon }[] = [
-  { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/dashboard', label: 'Home', icon: LayoutDashboard },
   { path: '/quests', label: 'Quests', icon: Map },
   { path: '/campaigns', label: 'Campaigns', icon: Trophy },
   { path: '/quest-history', label: 'History', icon: History },
@@ -102,7 +102,7 @@ export const DashboardNavbar: React.FC = () => {
             {/* Logo Section */}
             <div className="flex items-center gap-12">
               <Link
-                to="/dashboard"
+                to={user ? "/dashboard" : "/"}
                 className="flex items-center gap-3 flex-shrink-0 group"
               >
                 <div className="relative">
@@ -208,9 +208,17 @@ export const DashboardNavbar: React.FC = () => {
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
                   className="flex items-center gap-3 p-1 rounded-2xl bg-white border border-slate-100 hover:bg-slate-50 transition-all shadow-sm"
                 >
-                  <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-white text-sm font-bold">
-                    {getInitials(user?.name || user?.email)}
-                  </div>
+                  {user?.avatar ? (
+                    <img
+                      src={user.avatar}
+                      alt={user.name || 'User'}
+                      className="w-10 h-10 rounded-xl object-cover"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-white text-sm font-bold">
+                      {getInitials(user?.name || user?.email)}
+                    </div>
+                  )}
                   <ChevronDown className={`w-4 h-4 text-slate-400 mr-2 transition-transform duration-300 ${userMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
 
@@ -309,9 +317,17 @@ export const DashboardNavbar: React.FC = () => {
       >
         <div className="flex items-center justify-between p-6 border-b border-slate-50">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-slate-900 flex items-center justify-center text-white text-base font-bold">
-              {getInitials(user?.name || user?.email)}
-            </div>
+            {user?.avatar ? (
+              <img
+                src={user.avatar}
+                alt={user.name || 'User'}
+                className="w-12 h-12 rounded-2xl object-cover shadow-sm ring-2 ring-white"
+              />
+            ) : (
+              <div className="w-12 h-12 rounded-2xl bg-slate-900 flex items-center justify-center text-white text-base font-bold">
+                {getInitials(user?.name || user?.email)}
+              </div>
+            )}
             <div>
               <p className="text-sm font-bold text-slate-900">{user?.name || 'User'}</p>
               <p className="text-xs text-slate-500 truncate max-w-[150px]">{user?.email}</p>

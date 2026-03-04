@@ -1,5 +1,7 @@
 import fs from 'fs';
 import path from 'path';
+import pineconeService from '../services/pineconeService.js';
+
 
 const DATA_FILE = path.join(process.cwd(), 'data', 'memories.json');
 
@@ -40,21 +42,49 @@ class Memory {
 
   static async find(query = {}) {
     const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    return items.filter(item => {
+    let filteredItems = items.filter(item => {
       for (let key in query) {
         if (query[key] !== undefined && item[key] !== query[key]) return false;
       }
       return true;
-    }).map(item => new Memory(item));
+    });
+
+    // Fallback if no items found and we have a userId
+    if (filteredItems.length === 0 && query.userId) {
+      console.log(`🔍 Memories for ${query.userId} not in local JSON. checking Pinecone...`);
+      const pineconeItems = await pineconeService.listRecords(query.userId, 'memories');
+      if (pineconeItems.length > 0) {
+        // Rehydrate locally
+        for (const item of pineconeItems) {
+          const memory = new Memory(item);
+          await memory.save({ skipPinecone: true });
+        }
+        return pineconeItems.map(item => new Memory(item));
+      }
+    }
+
+    return filteredItems.map(item => new Memory(item));
   }
 
   static async findById(id) {
     const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    const item = items.find(i => i._id === id);
+    let item = items.find(i => i._id === id);
+
+    if (!item) {
+      console.log(`🔍 Memory ${id} not in local JSON. Checking Pinecone...`);
+      const pineconeRecord = await pineconeService.getRecord(id, 'memories');
+      if (pineconeRecord) {
+        item = pineconeRecord;
+        const memory = new Memory(item);
+        await memory.save({ skipPinecone: true });
+        return memory;
+      }
+    }
+
     return item ? new Memory(item) : null;
   }
 
-  async save() {
+  async save(options = {}) {
     const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
     this.updatedAt = new Date();
     const index = items.findIndex(i => i._id === this._id);
@@ -64,6 +94,12 @@ class Memory {
       items.push(this);
     }
     fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
+
+    // Sync to Pinecone
+    if (!options.skipPinecone) {
+      await pineconeService.upsertMemory(this);
+    }
+
     return this;
   }
 

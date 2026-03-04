@@ -137,9 +137,17 @@ export const getCategoryLabel = (category: string): string => {
 
 export const getInitials = (name?: string): string => {
   if (!name) return 'U';
+
+  // If it's a long string without spaces (likely a wallet address)
+  if (name.length > 20 && !name.includes(' ') && !name.includes('@')) {
+    return name.substring(2, 4).toUpperCase(); // Skip '0x' and take next 2
+  }
+
   const parts = name.split(/[@.\s]/);
   if (parts.length >= 2) {
-    return (parts[0][0] + parts[1][0]).toUpperCase();
+    const p1 = parts[0]?.[0] || '';
+    const p2 = parts[1]?.[0] || '';
+    if (p1 && p2) return (p1 + p2).toUpperCase();
   }
   return name.substring(0, 2).toUpperCase();
 };

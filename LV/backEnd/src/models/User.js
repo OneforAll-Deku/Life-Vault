@@ -2,6 +2,8 @@ import jwt from 'jsonwebtoken';
 import { Account } from '@aptos-labs/ts-sdk';
 import fs from 'fs';
 import path from 'path';
+import pineconeService from '../services/pineconeService.js';
+
 
 const USERS_FILE = path.join(process.cwd(), 'data', 'users.json');
 
@@ -15,13 +17,9 @@ if (!fs.existsSync(USERS_FILE)) {
 
 class User {
   constructor(data) {
+    Object.assign(this, data);
     this._id = data._id || `user_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-    this.email = data.email;
     this.name = data.name || (data.email ? data.email.split('@')[0] : 'User');
-    this.password = data.password;
-    this.aptosAddress = data.aptosAddress;
-    this.aptosPublicKey = data.aptosPublicKey;
-    this.bitcoinAddress = data.bitcoinAddress;
     this.userType = data.userType || 'user';
     this.createdAt = data.createdAt || new Date();
     this.totalMemories = data.totalMemories || 0;
@@ -30,19 +28,45 @@ class User {
 
   static async findOne(query) {
     const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-    const user = users.find(u => {
+    let userData = users.find(u => {
       if (query.email && u.email === query.email) return true;
       if (query.aptosAddress && u.aptosAddress === query.aptosAddress) return true;
       if (query.bitcoinAddress && u.bitcoinAddress === query.bitcoinAddress) return true;
       return false;
     });
-    return user ? new User(user) : null;
+
+    if (!userData && query.email) {
+      console.log(`🔍 User ${query.email} not in local JSON. Checking Pinecone...`);
+      userData = await pineconeService.findUserByEmail(query.email);
+      if (userData) {
+        // Rehydrate locally
+        const user = new User(userData);
+        await user.save({ skipPinecone: true });
+        return user;
+      }
+    }
+
+    return userData ? new User(userData) : null;
   }
 
   static async findById(id) {
     const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-    const user = users.find(u => u._id === id);
-    return user ? new User(user) : null;
+    let userData = users.find(u => u._id === id);
+
+    if (!userData) {
+      console.log(`🔍 User ${id} not in local JSON. Checking Pinecone...`);
+      const pineconeRecord = await pineconeService.getRecord(id, 'users');
+      if (pineconeRecord) {
+        userData = pineconeRecord.metadata || pineconeRecord;
+        if (userData) {
+          const user = new User(userData);
+          await user.save({ skipPinecone: true });
+          return user;
+        }
+      }
+    }
+
+    return userData ? new User(userData) : null;
   }
 
   static async findByIdAndUpdate(id, update) {
@@ -56,7 +80,7 @@ class User {
     return null;
   }
 
-  async save() {
+  async save(options = {}) {
     const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
     const index = users.findIndex(u => u._id === this._id || (u.email && u.email === this.email));
 
@@ -67,6 +91,12 @@ class User {
     }
 
     fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+
+    // Also sync to Pinecone for permanent persistence (unless skipping)
+    if (!options.skipPinecone) {
+      await pineconeService.upsertUser(this);
+    }
+
     return this;
   }
 

@@ -1,156 +1,117 @@
-import mongoose from 'mongoose';
+import fs from 'fs';
+import path from 'path';
 import crypto from 'crypto';
+import pineconeService from '../services/pineconeService.js';
 
-const storySchema = new mongoose.Schema({
-  // Basic Info
-  title: {
-    type: String,
-    required: [true, 'Story title is required'],
-    trim: true,
-    maxlength: [100, 'Title cannot exceed 100 characters']
-  },
-  description: { type: String, trim: true },
 
-  // Short code for sharing
-  shortCode: {
-    type: String,
-    unique: true,
-    index: true
-  },
+const DATA_FILE = path.join(process.cwd(), 'data', 'stories.json');
 
-  // Creator
-  creatorId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-    index: true
-  },
+// Ensure data folder and file exist
+if (!fs.existsSync(path.dirname(DATA_FILE))) {
+  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+}
+if (!fs.existsSync(DATA_FILE)) {
+  fs.writeFileSync(DATA_FILE, JSON.stringify([]));
+}
 
-  // Recipients
-  recipients: [{
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    email: { type: String },
-    phone: { type: String },
-    name: { type: String },
-    inviteSentAt: { type: Date },
-    acceptedAt: { type: Date },
-    currentChapter: { type: Number, default: 0 }
-  }],
+class Story {
+  constructor(data) {
+    this._id = data._id || `story_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    this.title = data.title;
+    this.description = data.description || '';
+    this.shortCode = data.shortCode || 'S' + crypto.randomBytes(4).toString('hex').toUpperCase();
+    this.creatorId = data.creatorId;
+    this.recipients = data.recipients || [];
+    this.isCollaborative = data.isCollaborative || false;
+    this.coAuthors = data.coAuthors || [];
+    this.isInteractive = data.isInteractive || false;
+    this.isPublic = data.isPublic || false;
+    this.chapters = data.chapters || [];
+    this.totalChapters = data.totalChapters || 0;
+    this.settings = data.settings || { theme: 'memory' };
+    this.coverImage = data.coverImage || null;
+    this.backgroundMusic = data.backgroundMusic || null;
+    this.isEncrypted = data.isEncrypted ?? true;
+    this.status = data.status || 'draft';
+    this.activatedAt = data.activatedAt || null;
+    this.completedAt = data.completedAt || null;
+    this.stats = data.stats || { totalViews: 0, completions: 0 };
+    this.linkedCampaignId = data.linkedCampaignId || null;
+    this.tags = data.tags || [];
+    this.occasion = data.occasion || 'other';
+    this.createdAt = data.createdAt || new Date();
+    this.updatedAt = data.updatedAt || new Date();
+  }
 
-  // Collaboration
-  isCollaborative: { type: Boolean, default: false },
-  coAuthors: [{
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    role: { type: String, enum: ['editor', 'contributor'], default: 'contributor' },
-    joinedAt: { type: Date, default: Date.now }
-  }],
+  static async find(query = {}) {
+    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    let filteredItems = items.filter(item => {
+      for (let key in query) {
+        if (query[key] !== undefined && item[key] !== query[key]) return false;
+      }
+      return true;
+    });
 
-  isInteractive: { type: Boolean, default: false },
-  isPublic: { type: Boolean, default: false },
-
-  // Chapters (stored as references)
-  chapters: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'StoryChapter'
-  }],
-  totalChapters: { type: Number, default: 0 },
-
-  // Story Settings
-  settings: {
-    allowSkipChapters: { type: Boolean, default: false },
-    showChapterTitles: { type: Boolean, default: true },
-    notifyOnUnlock: { type: Boolean, default: true },
-    requireApproval: { type: Boolean, default: true }, // For co-authored chapters
-    theme: {
-      type: String,
-      enum: ['romantic', 'adventure', 'mystery', 'celebration', 'memory', 'custom'],
-      default: 'memory'
-    },
-    customTheme: {
-      primaryColor: { type: String },
-      secondaryColor: { type: String },
-      fontFamily: { type: String }
+    // Fallback if no items found and we have a creatorId (common in Render environment)
+    if (filteredItems.length === 0 && query.creatorId) {
+      console.log(`🔍 Stories for ${query.creatorId} not in local JSON. checking Pinecone...`);
+      const pineconeItems = await pineconeService.listRecords(query.creatorId, 'stories');
+      if (pineconeItems.length > 0) {
+        // Rehydrate locally
+        for (const item of pineconeItems) {
+          const story = new Story(item);
+          await story.save({ skipPinecone: true });
+        }
+        return pineconeItems.map(item => new Story(item));
+      }
     }
-  },
 
-  // Cover & Media
-  coverImage: { type: String },
-  backgroundMusic: { type: String },
-
-  // Encryption
-  isEncrypted: { type: Boolean, default: true },
-  encryptionKey: { type: String, select: false }, // Derived from password or user key
-
-  // Status
-  status: {
-    type: String,
-    enum: ['draft', 'active', 'completed', 'archived'],
-    default: 'draft'
-  },
-  activatedAt: { type: Date },
-  completedAt: { type: Date },
-
-  // Statistics
-  stats: {
-    totalViews: { type: Number, default: 0 },
-    completions: { type: Number, default: 0 },
-    averageCompletionTime: { type: Number, default: 0 } // hours
-  },
-
-  // Optional: Link to quest/campaign
-  linkedCampaignId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Campaign'
-  },
-
-  // Tags
-  tags: [{ type: String }],
-  occasion: {
-    type: String,
-    enum: ['birthday', 'anniversary', 'proposal', 'graduation', 'travel', 'friendship', 'family', 'other']
-  }
-}, {
-  timestamps: true
-});
-
-// Generate short code
-storySchema.pre('save', function (next) {
-  if (!this.shortCode) {
-    this.shortCode = 'S' + crypto.randomBytes(4).toString('hex').toUpperCase();
-  }
-  next();
-});
-
-// Method: Get progress for a recipient
-storySchema.methods.getProgressForUser = async function (userId) {
-  const recipient = this.recipients.find(r => r.userId?.toString() === userId.toString());
-
-  if (!recipient) {
-    return { error: 'User is not a recipient of this story' };
+    return filteredItems.map(item => new Story(item));
   }
 
-  await this.populate('chapters');
+  static async findById(id) {
+    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    let item = items.find(i => i._id === id);
 
-  const unlockedChapters = [];
-  const lockedChapters = [];
+    if (!item) {
+      console.log(`🔍 Story ${id} not in local JSON. Checking Pinecone...`);
+      const pineconeRecord = await pineconeService.getRecord(id, 'stories');
+      if (pineconeRecord) {
+        item = pineconeRecord;
+        const story = new Story(item);
+        await story.save({ skipPinecone: true });
+        return story;
+      }
+    }
 
-  for (const chapter of this.chapters) {
-    const canUnlock = await chapter.checkUnlockConditions(userId);
-    if (canUnlock.unlocked) {
-      unlockedChapters.push(chapter);
+    return item ? new Story(item) : null;
+  }
+
+  async save(options = {}) {
+    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    this.totalChapters = this.chapters.length;
+    this.updatedAt = new Date();
+    const index = items.findIndex(i => i._id === this._id);
+    if (index !== -1) {
+      items[index] = { ...this };
     } else {
-      lockedChapters.push({ chapter, reason: canUnlock.reason });
+      items.push(this);
     }
+    fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
+
+    // Sync to Pinecone
+    if (!options.skipPinecone) {
+      await pineconeService.upsertStory(this);
+    }
+
+    return this;
   }
 
-  return {
-    totalChapters: this.chapters.length,
-    unlockedCount: unlockedChapters.length,
-    progress: (unlockedChapters.length / this.chapters.length) * 100,
-    currentChapter: recipient.currentChapter,
-    unlockedChapters,
-    nextLocked: lockedChapters[0] || null
-  };
-};
+  static async create(data) {
+    const story = new Story(data);
+    await story.save();
+    return story;
+  }
+}
 
-export default mongoose.model('Story', storySchema);
+export default Story;

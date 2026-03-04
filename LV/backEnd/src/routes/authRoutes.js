@@ -493,6 +493,8 @@ router.post('/wallet', async (req, res, next) => {
           id: user._id,
           email: user.email,
           name: user.name,
+          avatar: user.avatar,
+          bio: user.bio,
           aptosAddress: user.aptosAddress,
           totalMemories: user.totalMemories,
           storageUsed: user.storageUsed,
@@ -632,6 +634,8 @@ router.post('/register', async (req, res, next) => {
           id: user._id,
           email: user.email,
           name: user.name,
+          avatar: user.avatar,
+          bio: user.bio,
           aptosAddress: user.aptosAddress
         },
         token
@@ -690,6 +694,8 @@ router.post('/login', async (req, res, next) => {
           id: user._id,
           email: user.email,
           name: user.name,
+          avatar: user.avatar,
+          bio: user.bio,
           aptosAddress: user.aptosAddress,
           userType: user.userType,
           organizationInfo: user.organizationInfo,
@@ -739,6 +745,13 @@ router.post('/unlink-wallet', protect, async (req, res, next) => {
 router.get('/me', protect, async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id || req.user._id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User session invalid. Please log in again.'
+      });
+    }
 
     let balance = null;
     if (user.aptosAddress) {
@@ -796,6 +809,9 @@ router.put('/profile', protect, async (req, res, next) => {
     if (avatar !== undefined) user.avatar = avatar;
 
     await user.save();
+
+    // Update the req.user object for subsequent middleware if any
+    req.user.name = user.name;
 
     res.json({
       success: true,
