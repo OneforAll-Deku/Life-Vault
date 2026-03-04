@@ -38,7 +38,7 @@ export default defineConfig({
     css: true,
   },
   build: {
-    chunkSizeWarningLimit: 1600,
+    chunkSizeWarningLimit: 2000,
   },
 })
 
