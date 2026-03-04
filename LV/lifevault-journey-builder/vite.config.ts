@@ -37,5 +37,8 @@ export default defineConfig({
     setupFiles: './src/test/setup.ts',
     css: true,
   },
+  build: {
+    chunkSizeWarningLimit: 1600,
+  },
 })
 
