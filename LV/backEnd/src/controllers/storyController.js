@@ -861,7 +861,7 @@ export const getMyStories = async (req, res, next) => {
         ...storyObj,
         encryptionKey: undefined,
       };
-    });
+    }));
 
     // ── CONSISTENT: return array directly in data ──
     res.json({
@@ -954,7 +954,7 @@ export const getReceivedStories = async (req, res, next) => {
           totalChapters: storyObj.totalChapters || storyObj.chapters.length,
         },
       };
-    });
+    }));
 
     // ── CONSISTENT: return array directly in data ──
     res.json({
