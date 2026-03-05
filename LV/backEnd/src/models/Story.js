@@ -46,7 +46,28 @@ class Story {
   static async find(query = {}) {
     const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
     let filteredItems = items.filter(item => {
+      // Handle $or queries
+      if (query.$or && Array.isArray(query.$or)) {
+        return query.$or.some(condition => {
+          for (let key in condition) {
+            // Support nested properties like 'recipients.userId'
+            if (key.includes('.')) {
+              const [parent, child] = key.split('.');
+              if (Array.isArray(item[parent])) {
+                return item[parent].some(subItem => subItem[child] === condition[key]);
+              }
+              if (item[parent] && item[parent][child] === condition[key]) return true;
+              return false;
+            }
+            if (item[key] === condition[key]) return true;
+          }
+          return false;
+        });
+      }
+
+      // Handle standard queries
       for (let key in query) {
+        if (key === '$or') continue;
         if (query[key] !== undefined && item[key] !== query[key]) return false;
       }
       return true;

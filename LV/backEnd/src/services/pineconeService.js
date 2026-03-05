@@ -57,9 +57,11 @@ class PineconeService {
                 }
             });
 
-            return (response.matches || []).map(m => ({
+            if (!response || !response.matches) return [];
+
+            return response.matches.map(m => ({
                 id: m.id,
-                ...m.record
+                ...(m.record || m.metadata || m)
             }));
         } catch (error) {
             console.error(`❌ Pinecone list failed in ${namespace}:`, error.message);
@@ -155,7 +157,7 @@ class PineconeService {
             return searchResponse.matches.map(match => ({
                 id: match.id,
                 score: match.score,
-                metadata: match.record // searchRecords returns data in 'record'
+                metadata: match.record || match.metadata // Handled both searchRecords and query formats
             }));
         } catch (error) {
             console.error('❌ Pinecone search failed:', error.message);

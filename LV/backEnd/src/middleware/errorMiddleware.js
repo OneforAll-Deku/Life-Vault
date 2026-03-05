@@ -25,12 +25,13 @@ export const errorHandler = (err, req, res, next) => {
   let error = { ...err };
   error.message = err.message;
 
-  // Log error for debugging
-  console.error('❌ Error:', {
+  // Log error for debugging - ALWAYS log stack for 500s in console to help with Render logs
+  console.error('❌ API Error:', {
     message: err.message,
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+    statusCode: error.statusCode || 500,
     path: req.path,
-    method: req.method
+    method: req.method,
+    stack: err.stack // Log stack to console even in prod, but don't send to client
   });
 
   // Bad ObjectId (legacy handling)

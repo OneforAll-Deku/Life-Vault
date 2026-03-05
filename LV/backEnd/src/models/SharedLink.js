@@ -1,186 +1,114 @@
-// file: backEnd/src/models/SharedLink.js
-
-import mongoose from 'mongoose';
+import fs from 'fs';
+import path from 'path';
 import crypto from 'crypto';
 
-const sharedLinkSchema = new mongoose.Schema({
-  // Reference to the memory being shared
-  memoryId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Memory',
-    required: true
-  },
-  // Owner of the memory
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  // Unique share token
-  token: {
-    type: String,
-    required: true,
-    unique: true,
-    index: true
-  },
-  // Short code for easy sharing
-  shortCode: {
-    type: String,
-    required: true,
-    unique: true,
-    index: true
-  },
-  // Expiration settings
-  expiresAt: {
-    type: Date,
-    required: true,
-    index: true
-  },
-  // Access settings
-  accessType: {
-    type: String,
-    enum: ['view', 'download'],
-    default: 'view'
-  },
-  password: {
-    type: String,
-    default: null
-  },
-  isPasswordProtected: {
-    type: Boolean,
-    default: false
-  },
-  // ── NEW: ZK & Advanced Security ──
-  isZKProtected: {
-    type: Boolean,
-    default: false
-  },
-  identityCommitment: {
-    type: String, // Hash of the secret key/answer
-    default: null
-  },
-  zkChallenge: {
-    type: String, // Random nonce for proof
-    default: null
-  },
-  encryptedData: {
-    type: String, // Data encrypted via encryptWithPassword
-    default: null
-  },
-  // Access limits
-  maxViews: {
-    type: Number,
-    default: null // null = unlimited
-  },
-  viewCount: {
-    type: Number,
-    default: 0
-  },
-  // Status
-  isActive: {
-    type: Boolean,
-    default: true
-  },
-  isRevoked: {
-    type: Boolean,
-    default: false
-  },
-  revokedAt: {
-    type: Date,
-    default: null
-  },
-  // Metadata
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  lastAccessedAt: {
-    type: Date,
-    default: null
-  },
-  // Access log
-  accessLog: [{
-    accessedAt: {
-      type: Date,
-      default: Date.now
-    },
-    ipAddress: String,
-    userAgent: String
-  }]
-}, {
-  timestamps: true
-});
+const DATA_FILE = path.join(process.cwd(), 'data', 'sharedlinks.json');
 
-// Generate unique token
-sharedLinkSchema.statics.generateToken = function () {
-  return crypto.randomBytes(32).toString('hex');
-};
+// Ensure data folder and file exist
+if (!fs.existsSync(path.dirname(DATA_FILE))) {
+  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+}
+if (!fs.existsSync(DATA_FILE)) {
+  fs.writeFileSync(DATA_FILE, JSON.stringify([]));
+}
 
-// Generate short code (8 characters)
-sharedLinkSchema.statics.generateShortCode = function () {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-  let result = '';
-  for (let i = 0; i < 8; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-};
-
-// Check if link is valid
-sharedLinkSchema.methods.isValid = function () {
-  // Check if revoked
-  if (this.isRevoked || !this.isActive) {
-    return { valid: false, reason: 'Link has been revoked' };
+class SharedLink {
+  constructor(data) {
+    this._id = data._id || `link_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    this.memoryId = data.memoryId;
+    this.userId = data.userId;
+    this.token = data.token || SharedLink.generateToken();
+    this.shortCode = data.shortCode || SharedLink.generateShortCode();
+    this.expiresAt = data.expiresAt || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    this.accessType = data.accessType || 'view';
+    this.password = data.password || null;
+    this.isPasswordProtected = data.isPasswordProtected || false;
+    this.isZKProtected = data.isZKProtected || false;
+    this.identityCommitment = data.identityCommitment || null;
+    this.zkChallenge = data.zkChallenge || null;
+    this.encryptedData = data.encryptedData || null;
+    this.maxViews = data.maxViews || null;
+    this.viewCount = data.viewCount || 0;
+    this.isActive = data.isActive ?? true;
+    this.isRevoked = data.isRevoked || false;
+    this.revokedAt = data.revokedAt || null;
+    this.createdAt = data.createdAt || new Date();
+    this.lastAccessedAt = data.lastAccessedAt || null;
+    this.accessLog = data.accessLog || [];
+    this.updatedAt = data.updatedAt || new Date();
   }
 
-  // Check expiration
-  if (new Date() > this.expiresAt) {
-    return { valid: false, reason: 'Link has expired' };
+  static async find(query = {}) {
+    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    return items.filter(item => {
+      for (let key in query) {
+        if (query[key] !== undefined && item[key] !== query[key]) return false;
+      }
+      return true;
+    }).map(item => new SharedLink(item));
   }
 
-  // Check view limit
-  if (this.maxViews !== null && this.viewCount >= this.maxViews) {
-    return { valid: false, reason: 'Maximum views reached' };
+  static async findOne(query) {
+    const items = await this.find(query);
+    return items.length > 0 ? items[0] : null;
   }
 
-  return { valid: true };
-};
-
-// Record access
-sharedLinkSchema.methods.recordAccess = async function (ipAddress, userAgent) {
-  this.viewCount += 1;
-  this.lastAccessedAt = new Date();
-  this.accessLog.push({
-    accessedAt: new Date(),
-    ipAddress,
-    userAgent
-  });
-
-  // Keep only last 100 access logs
-  if (this.accessLog.length > 100) {
-    this.accessLog = this.accessLog.slice(-100);
+  static async findById(id) {
+    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    const item = items.find(i => i._id === id);
+    return item ? new SharedLink(item) : null;
   }
 
-  await this.save();
-};
+  async save() {
+    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    this.updatedAt = new Date();
+    const index = items.findIndex(i => i._id === this._id);
+    if (index !== -1) {
+      items[index] = { ...this };
+    } else {
+      items.push(this);
+    }
+    fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
+    return this;
+  }
 
-// Virtual for remaining time
-sharedLinkSchema.virtual('remainingTime').get(function () {
-  const now = new Date();
-  const remaining = this.expiresAt - now;
+  static async create(data) {
+    const link = new SharedLink(data);
+    await link.save();
+    return link;
+  }
 
-  if (remaining <= 0) return 'Expired';
+  static generateToken() {
+    return crypto.randomBytes(32).toString('hex');
+  }
 
-  const days = Math.floor(remaining / (1000 * 60 * 60 * 24));
-  const hours = Math.floor((remaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-  const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+  static generateShortCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    let result = '';
+    for (let i = 0; i < 8; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  }
 
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
-});
+  isValid() {
+    if (this.isRevoked || !this.isActive) return { valid: false, reason: 'Link has been revoked' };
+    if (new Date() > new Date(this.expiresAt)) return { valid: false, reason: 'Link has expired' };
+    if (this.maxViews !== null && this.viewCount >= this.maxViews) return { valid: false, reason: 'Maximum views reached' };
+    return { valid: true };
+  }
 
-// Indexes for cleanup job
-sharedLinkSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // TTL index
+  async recordAccess(ipAddress, userAgent) {
+    this.viewCount += 1;
+    this.lastAccessedAt = new Date();
+    this.accessLog.push({
+      accessedAt: new Date(),
+      ipAddress,
+      userAgent,
+    });
+    if (this.accessLog.length > 100) this.accessLog = this.accessLog.slice(-100);
+    return this.save();
+  }
+}
 
-export default mongoose.model('SharedLink', sharedLinkSchema);
+export default SharedLink;

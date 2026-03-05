@@ -44,6 +44,9 @@ interface WalletContextType {
   isBurner: boolean;
   createBurner: () => void;
   bitcoinAccount: { address: string; network: string } | null;
+  aptosClient: Aptos;
+  currentModuleAddress: string;
+  switchNetwork: (targetNetwork: string) => Promise<boolean>;
 }
 
 const WalletContext = createContext<WalletContextType | null>(null);
@@ -119,14 +122,88 @@ const WalletContextProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     });
   }, [toast]);
 
-  // Setup Aptos Client for Faucet
-  // Dynamically uses the network from environment variables
+  // Setup Aptos Client
+  // Dynamically uses the network from the connected wallet or environment variables
   const aptosClient = useMemo(() => {
-    const envNetwork = import.meta.env.VITE_APTOS_NETWORK?.toLowerCase();
-    const network = envNetwork === 'testnet' ? Network.TESTNET : Network.DEVNET;
-    const config = new AptosConfig({ network });
+    // 1. Check connected wallet network first
+    const walletNetwork = network?.name?.toLowerCase() || '';
+
+    // 2. Fallback to environment variable
+    const envNetwork = import.meta.env.VITE_APTOS_NETWORK?.toLowerCase() || '';
+
+    const activeNetworkString = walletNetwork || envNetwork || 'devnet';
+    const chainId = network?.chainId;
+
+    console.log(`🌐 [WalletContext] Network Analysis: Wallet="${network?.name}", ChainId=${chainId}, Env=${envNetwork}, Active=${activeNetworkString}`);
+
+    let aptosNetwork: Network;
+    // Prioritize string matching (more descriptive) then fallback to ChainID
+    if (activeNetworkString.includes('mainnet')) {
+      aptosNetwork = Network.MAINNET;
+    } else if (activeNetworkString.includes('devnet')) {
+      aptosNetwork = Network.DEVNET;
+    } else if (activeNetworkString.includes('testnet')) {
+      aptosNetwork = Network.TESTNET;
+    } else if (chainId === 1) {
+      aptosNetwork = Network.MAINNET;
+    } else if (chainId === 2) {
+      aptosNetwork = Network.TESTNET;
+    } else {
+      aptosNetwork = Network.DEVNET;
+    }
+
+    const config = new AptosConfig({ network: aptosNetwork });
     return new Aptos(config);
-  }, []);
+  }, [network]);
+
+  // Map of module addresses per network
+  const currentModuleAddress = useMemo(() => {
+    const walletNetwork = network?.name?.toLowerCase() || '';
+    const envNetwork = import.meta.env.VITE_APTOS_NETWORK?.toLowerCase() || '';
+    const activeNetworkString = walletNetwork || envNetwork || 'devnet';
+    const chainId = network?.chainId;
+
+    // Logic should match aptosNetwork selection
+    const isMainnet = activeNetworkString.includes('mainnet') || chainId === 1;
+    const isDevnet = activeNetworkString.includes('devnet') || (!activeNetworkString.includes('testnet') && chainId !== 2);
+    const isTestnet = activeNetworkString.includes('testnet') || (chainId === 2 && !activeNetworkString.includes('devnet'));
+
+    // Default address to use if specific is missing
+    const defaultAddress = import.meta.env.VITE_APTOS_MODULE_ADDRESS || '0x547b91ee28212a3759017e89addbf0507d0e082264914855bcc2a602139b870a';
+
+    if (isMainnet) {
+      return import.meta.env.VITE_MAINNET_MODULE_ADDRESS || defaultAddress;
+    } else if (isTestnet) {
+      return import.meta.env.VITE_TESTNET_MODULE_ADDRESS || defaultAddress;
+    }
+    return defaultAddress;
+  }, [network]);
+
+  const switchNetwork = useCallback(async (targetNetwork: string) => {
+    try {
+      console.log(`🔄 Switching wallet to ${targetNetwork}...`);
+      if ((window as any).aptos?.changeNetwork) {
+        await (window as any).aptos.changeNetwork(targetNetwork);
+        return true;
+      }
+      return false;
+    } catch (err: any) {
+      console.error('Failed to switch network:', err);
+      toast({ title: "Network Switch Failed", description: err.message || "Please switch your wallet manually.", variant: "destructive" });
+      return false;
+    }
+  }, [toast]);
+
+  // Listen for network changes in the wallet extension
+  useEffect(() => {
+    if (connected && (window as any).aptos?.onNetworkChange) {
+      console.log('📡 [WalletContext] Registering network change listener...');
+      (window as any).aptos.onNetworkChange((newNetwork: any) => {
+        console.log('🌐 [WalletContext] Wallet Network Event:', newNetwork);
+        // This will trigger a re-render because 'network' from useAptosWallet() will change
+      });
+    }
+  }, [connected]);
 
   const accountRef = useRef(aptosAccount);
 
@@ -517,6 +594,9 @@ const WalletContextProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     isBurner: !!burnerAccount && !connected,
     createBurner,
     bitcoinAccount,
+    aptosClient,
+    currentModuleAddress,
+    switchNetwork,
   };
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

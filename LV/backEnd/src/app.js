@@ -142,13 +142,27 @@ app.get('/health', (req, res) => {
 // API ROUTES
 // ==========================================
 
+// Debug logger for API requests
+app.use('/api', (req, res, next) => {
+  console.log(`📡 API Request: ${req.method} ${req.originalUrl}`);
+  next();
+});
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date(), env: process.env.NODE_ENV });
+});
+
+// Primary Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/memories', memoryRoutes);
+app.use('/api/stories', storyRoutes);
+
+// Secondary Routes
 app.use('/api/share', shareRoutes);
 app.use('/api/quests', questRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/badges', badgeRoutes);
-app.use('/api/stories', storyRoutes);
 app.use('/api/business', businessRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/vaults', familyVaultRoutes);

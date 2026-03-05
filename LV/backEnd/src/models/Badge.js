@@ -1,156 +1,82 @@
-import mongoose from 'mongoose';
-import { BADGE_RARITY } from '../config/constants.js';
+import fs from 'fs';
+import path from 'path';
 import crypto from 'crypto';
+import { BADGE_RARITY } from '../config/constants.js';
 
-const badgeSchema = new mongoose.Schema({
-  // Basic Info
-  name: {
-    type: String,
-    required: [true, 'Badge name is required'],
-    trim: true,
-    maxlength: [50, 'Name cannot exceed 50 characters']
-  },
-  description: {
-    type: String,
-    trim: true,
-    maxlength: [500, 'Description cannot exceed 500 characters']
-  },
-  shortCode: {
-    type: String,
-    unique: true,
-    index: true
-  },
+const DATA_FILE = path.join(process.cwd(), 'data', 'badges.json');
 
-  // Creator
-  creatorId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  campaignId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Campaign'
-  },
+// Ensure data folder and file exist
+if (!fs.existsSync(path.dirname(DATA_FILE))) {
+  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+}
+if (!fs.existsSync(DATA_FILE)) {
+  fs.writeFileSync(DATA_FILE, JSON.stringify([]));
+}
 
-  // Visual
-  imageUrl: {
-    type: String,
-    required: [true, 'Badge image is required']
-  },
-  thumbnailUrl: { type: String },
-  animatedUrl: { type: String },
-  backgroundColor: { type: String, default: '#000000' },
-
-  // NFT Metadata
-  nftMetadata: {
-    isNft: { type: Boolean, default: false },
-    collectionId: { type: String },
-    maxSupply: { type: Number },
-    currentSupply: { type: Number, default: 0 },
-    royaltyPercentage: { type: Number, default: 0 },
-    attributes: [{
-      trait_type: { type: String },
-      value: { type: mongoose.Schema.Types.Mixed },
-      display_type: { type: String }
-    }]
-  },
-
-  // Classification
-  rarity: {
-    type: String,
-    enum: Object.values(BADGE_RARITY),
-    default: BADGE_RARITY.COMMON
-  },
-  category: {
-    type: String,
-    enum: ['achievement', 'location', 'collection', 'event', 'milestone', 'special'],
-    default: 'achievement'
-  },
-  tier: {
-    type: Number,
-    default: 1,
-    min: 1,
-    max: 10
-  },
-
-  // Requirements to Earn
-  requirements: {
-    questId: { type: mongoose.Schema.Types.ObjectId, ref: 'Quest' },
-    campaignCompletion: { type: Boolean, default: false },
-    questCount: { type: Number },
-    specificLocations: [{ type: String }],
-    customCondition: { type: String }
-  },
-
-  // Stats
-  stats: {
-    totalAwarded: { type: Number, default: 0 },
-    uniqueHolders: { type: Number, default: 0 }
-  },
-
-  // On-Chain
-  onChainBadgeId: { type: String },
-  contractAddress: { type: String },
-  metadataUri: { type: String },
-
-  // Settings
-  isActive: { type: Boolean, default: true },
-  isTransferable: { type: Boolean, default: true },
-  isBurnable: { type: Boolean, default: false },
-  expiresAt: { type: Date },
-
-  // Points Value
-  pointValue: { type: Number, default: 0 }
-}, {
-  timestamps: true
-});
-
-// Index
-badgeSchema.index({ creatorId: 1 });
-badgeSchema.index({ campaignId: 1 });
-badgeSchema.index({ rarity: 1 });
-
-// Generate short code
-badgeSchema.pre('save', function (next) {
-  if (!this.shortCode) {
-    this.shortCode = 'B' + crypto.randomBytes(3).toString('hex').toUpperCase();
-  }
-  next();
-});
-
-// Method: Award badge to user
-badgeSchema.methods.awardTo = async function (userId) {
-  const User = mongoose.model('User');
-  const user = await User.findById(userId);
-
-  if (!user) throw new Error('User not found');
-
-  // Check if already has badge
-  if (user.badges?.some(b => b.badgeId.toString() === this._id.toString())) {
-    throw new Error('User already has this badge');
+class Badge {
+  constructor(data) {
+    this._id = data._id || `badge_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    this.name = data.name;
+    this.description = data.description || '';
+    this.shortCode = data.shortCode || 'B' + crypto.randomBytes(3).toString('hex').toUpperCase();
+    this.creatorId = data.creatorId;
+    this.campaignId = data.campaignId || null;
+    this.imageUrl = data.imageUrl;
+    this.thumbnailUrl = data.thumbnailUrl || null;
+    this.animatedUrl = data.animatedUrl || null;
+    this.backgroundColor = data.backgroundColor || '#000000';
+    this.nftMetadata = data.nftMetadata || { isNft: false, collectionId: null, maxSupply: null, currentSupply: 0, royaltyPercentage: 0, attributes: [] };
+    this.rarity = data.rarity || BADGE_RARITY.COMMON;
+    this.category = data.category || 'achievement';
+    this.tier = data.tier || 1;
+    this.requirements = data.requirements || { questId: null, campaignCompletion: false, questCount: 0, specificLocations: [], customCondition: '' };
+    this.stats = data.stats || { totalAwarded: 0, uniqueHolders: 0 };
+    this.onChainBadgeId = data.onChainBadgeId || null;
+    this.contractAddress = data.contractAddress || null;
+    this.metadataUri = data.metadataUri || null;
+    this.isActive = data.isActive ?? true;
+    this.isTransferable = data.isTransferable ?? true;
+    this.isBurnable = data.isBurnable || false;
+    this.expiresAt = data.expiresAt || null;
+    this.pointValue = data.pointValue || 0;
+    this.createdAt = data.createdAt || new Date();
+    this.updatedAt = data.updatedAt || new Date();
   }
 
-  // Check max supply
-  if (this.nftMetadata?.maxSupply &&
-    this.stats.totalAwarded >= this.nftMetadata.maxSupply) {
-    throw new Error('Badge max supply reached');
+  static async find(query = {}) {
+    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    return items.filter(item => {
+      for (let key in query) {
+        if (query[key] !== undefined && item[key] !== query[key]) return false;
+      }
+      return true;
+    }).map(item => new Badge(item));
   }
 
-  // Add to user
-  if (!user.badges) user.badges = [];
-  user.badges.push({
-    badgeId: this._id,
-    awardedAt: new Date(),
-    questCompletionId: null // Can be linked later
-  });
+  static async findById(id) {
+    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    const item = items.find(i => i._id === id);
+    return item ? new Badge(item) : null;
+  }
 
-  // Update stats
-  this.stats.totalAwarded += 1;
-  this.stats.uniqueHolders += 1;
+  async save() {
+    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    this.updatedAt = new Date();
+    const index = items.findIndex(i => i._id === this._id);
+    if (index !== -1) {
+      items[index] = { ...this };
+    } else {
+      items.push(this);
+    }
+    fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
+    return this;
+  }
 
-  await Promise.all([user.save(), this.save()]);
+  static async create(data) {
+    const badge = new Badge(data);
+    await badge.save();
+    return badge;
+  }
+}
 
-  return { success: true, badge: this, user };
-};
-
-export default mongoose.model('Badge', badgeSchema);
+export default Badge;

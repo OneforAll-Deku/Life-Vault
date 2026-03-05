@@ -45,7 +45,7 @@ class AptosService {
   async initialize() {
     try {
       // Determine network
-      const networkName = process.env.APTOS_NETWORK || 'testnet';
+      const networkName = process.env.APTOS_NETWORK || 'devnet';
       let network;
       switch (networkName) {
         case 'mainnet':

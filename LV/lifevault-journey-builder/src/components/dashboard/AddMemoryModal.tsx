@@ -6,7 +6,7 @@ import type { CreateMemoryData } from '@/types';
 import { toLocalISOString } from '@/lib/utils';
 import {
   X, Upload, Image, FileText, Film, Music, File,
-  Loader2, ExternalLink, Shield, Check, AlertCircle, Coins, Clock, ImagePlus, Plus, Sparkles
+  Loader2, ExternalLink, Shield, Check, AlertCircle, Coins, Clock, ImagePlus, Plus, Sparkles, RefreshCw
 } from 'lucide-react';
 import { InputTransactionData } from '@aptos-labs/wallet-adapter-react';
 import { ConfettiButton, fireConfetti } from '@/components/ui/ConfettiButton/ConfettiButton';
@@ -53,7 +53,11 @@ export const AddMemoryModal: React.FC<AddMemoryModalProps> = ({
     connect,
     fundWallet,
     balance,
-    isPetraInstalled
+    isPetraInstalled,
+    aptosClient,
+    currentModuleAddress,
+    network,
+    switchNetwork
   } = useWallet();
 
   const [title, setTitle] = useState('');
@@ -76,13 +80,12 @@ export const AddMemoryModal: React.FC<AddMemoryModalProps> = ({
   const [txHash, setTxHash] = useState<string | null>(null);
   const [explorerUrl, setExplorerUrl] = useState<string | null>(null);
   const [ipfsHash, setIpfsHash] = useState<string | null>(null);
+  const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const MODULE_ADDRESS = import.meta.env.VITE_APTOS_MODULE_ADDRESS ||
-    '0x547b91ee28212a3759017e89addbf0507d0e082264914855bcc2a602139b870a';
+  const MODULE_ADDRESS = currentModuleAddress;
   const MODULE_NAME = 'memory_vault';
-  const NETWORK = import.meta.env.VITE_APTOS_NETWORK || 'devnet';
+  const NETWORK = network?.name?.toLowerCase() || import.meta.env.VITE_APTOS_NETWORK || 'devnet';
 
   const handleFileChange = async (selectedFile: File) => {
     setFile(selectedFile);
@@ -215,22 +218,17 @@ export const AddMemoryModal: React.FC<AddMemoryModalProps> = ({
           // 🔍 Pre-check: Does the module exist on this network?
           setBlockchainStep('simulating');
           try {
-            const config = new AptosConfig({
-              network: NETWORK === 'mainnet' ? Network.MAINNET :
-                NETWORK === 'testnet' ? Network.TESTNET :
-                  Network.DEVNET
-            });
-            const aptos = new Aptos(config);
-            await aptos.getAccountModule({
+            await aptosClient.getAccountModule({
               accountAddress: MODULE_ADDRESS,
               moduleName: MODULE_NAME,
             });
             console.log('✅ Module verified on-chain');
           } catch (moduleErr: any) {
-            console.error('🔍 Module Check Failed:', moduleErr);
+            console.error('🔍 Module Check Failed on Network:', NETWORK, moduleErr);
             if (moduleErr.message?.includes('not_found') || moduleErr.status === 404) {
-              const error = new Error('Module not found');
+              const error = new Error(`Module not found on ${NETWORK}`);
               (error as any).isModuleNotFound = true;
+              (error as any).currentNetwork = NETWORK;
               throw error;
             }
           }
@@ -254,7 +252,7 @@ export const AddMemoryModal: React.FC<AddMemoryModalProps> = ({
 
           const transactionHash = txResult.hash;
           setTxHash(transactionHash);
-          setExplorerUrl(`https://explorer.aptoslabs.com/txn/${transactionHash}?network=${NETWORK}`);
+          setExplorerUrl(`https://explorer.aptoslabs.com/txn/${transactionHash}?network=${NETWORK.includes('mainnet') ? 'mainnet' : NETWORK.includes('testnet') ? 'testnet' : 'devnet'}`);
 
           setBlockchainStep('confirming');
 
@@ -284,19 +282,56 @@ export const AddMemoryModal: React.FC<AddMemoryModalProps> = ({
           setLoading(false);
 
           if (blockchainError.isModuleNotFound || errMsg.includes('module_not_found') || errMsg.includes('Module not found')) {
+            const isDevnet = NETWORK.toLowerCase().includes('devnet');
+
             setError(
               <div className="text-left">
-                <p className="font-bold text-red-600 font-sans">⚠️ Wallet Network Mismatch!</p>
-                <p className="text-[11px] mt-1 text-red-500">The smart contract is deployed on <b>DEVNET</b>, but your Petra wallet may be on a different network.</p>
+                <p className="font-bold text-red-600 font-sans tracking-tight">
+                  ⚠️ {isDevnet ? 'Smart Contract Not Found' : `Wrong Network: ${NETWORK.toUpperCase()}`}
+                </p>
                 <div className="bg-amber-50 text-amber-800 p-3 rounded-lg mt-2 text-[11px] leading-relaxed border border-amber-200">
-                  <p className="font-bold mb-1">🔧 Fix: Switch Petra Wallet to Devnet</p>
-                  <ol className="list-decimal ml-4 space-y-0.5">
-                    <li>Open <b>Petra Wallet</b> extension</li>
-                    <li>Click <b>Settings</b> (gear icon)</li>
-                    <li>Select <b>Network</b></li>
-                    <li>Switch to <b>Devnet</b></li>
-                    <li>Retry saving your memory</li>
-                  </ol>
+                  <p className="font-bold mb-1 underline">Diagnostic Report:</p>
+                  <p className="mb-2">
+                    Current Network: <b>{NETWORK.toUpperCase()}</b><br />
+                    Target Address: <span className="font-mono text-[9px] break-all bg-white/50 px-1">{MODULE_ADDRESS}</span>
+                  </p>
+
+                  {!isDevnet ? (
+                    <div className="mt-2 space-y-2">
+                      <p className="font-bold text-amber-900 text-xs">🔧 Quick Fix: Auto-Switch Network</p>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setIsSwitchingNetwork(true);
+                          const success = await switchNetwork('devnet');
+                          setIsSwitchingNetwork(false);
+                          if (success) {
+                            setError(
+                              <div className="flex flex-col gap-1">
+                                <span className="font-bold text-green-600">✅ Network switched to Devnet!</span>
+                                <span>Try confirming your memory storage again.</span>
+                              </div>
+                            );
+                          }
+                        }}
+                        disabled={isSwitchingNetwork}
+                        className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 disabled:opacity-50"
+                      >
+                        {isSwitchingNetwork ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                        Switch Petra to Devnet Automatically
+                      </button>
+
+                      <p className="mt-2 text-slate-500 italic text-[10px]">
+                        Note: If auto-switch fails, manually go to Petra → Settings → Network → Devnet.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mt-2">
+                      <p className="font-bold text-red-900">🚨 Address Error</p>
+                      <p>You are on the correct network (Devnet), but the contract address is missing. Please ensure the contract is published to <b>{MODULE_ADDRESS.substring(0, 10)}...</b></p>
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={() => {

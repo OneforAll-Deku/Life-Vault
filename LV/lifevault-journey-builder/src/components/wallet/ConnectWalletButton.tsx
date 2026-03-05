@@ -214,7 +214,7 @@ export const ConnectWalletButton: React.FC<ConnectWalletButtonProps> = ({
               {/* Actions */}
               <div className="p-2">
                 <a
-                  href={`https://explorer.aptoslabs.com/account/${account.address}?network=${network?.name?.toLowerCase() || 'testnet'}`}
+                  href={`https://explorer.aptoslabs.com/account/${account.address}?network=${network?.name?.toLowerCase() || 'devnet'}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-3 w-full px-3 py-2.5 text-sm text-black/70 hover:bg-black/5 rounded-lg transition-colors"

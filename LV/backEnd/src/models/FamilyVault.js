@@ -1,205 +1,102 @@
-import mongoose from 'mongoose';
+import fs from 'fs';
+import path from 'path';
 import crypto from 'crypto';
 
-const memberSchema = new mongoose.Schema({
-    userId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true,
-    },
-    role: {
-        type: String,
-        enum: ['admin', 'contributor', 'viewer'],
-        default: 'contributor',
-    },
-    joinedAt: {
-        type: Date,
-        default: Date.now,
-    },
-    invitedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-    },
-});
+const DATA_FILE = path.join(process.cwd(), 'data', 'familyvaults.json');
 
-const vaultMemorySchema = new mongoose.Schema({
-    memoryId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Memory',
-        required: true,
-    },
-    addedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true,
-    },
-    addedAt: {
-        type: Date,
-        default: Date.now,
-    },
-    caption: {
-        type: String,
-        maxlength: 500,
-    },
-});
+// Ensure data folder and file exist
+if (!fs.existsSync(path.dirname(DATA_FILE))) {
+    fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+}
+if (!fs.existsSync(DATA_FILE)) {
+    fs.writeFileSync(DATA_FILE, JSON.stringify([]));
+}
 
-const inviteSchema = new mongoose.Schema({
-    code: {
-        type: String,
-        required: true,
-        unique: true,
-    },
-    role: {
-        type: String,
-        enum: ['contributor', 'viewer'],
-        default: 'contributor',
-    },
-    createdBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true,
-    },
-    usedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-    },
-    maxUses: {
-        type: Number,
-        default: 1,
-    },
-    usedCount: {
-        type: Number,
-        default: 0,
-    },
-    expiresAt: {
-        type: Date,
-        required: true,
-    },
-    isActive: {
-        type: Boolean,
-        default: true,
-    },
-    createdAt: {
-        type: Date,
-        default: Date.now,
-    },
-});
-
-const familyVaultSchema = new mongoose.Schema(
-    {
-        name: {
-            type: String,
-            required: [true, 'Vault name is required'],
-            trim: true,
-            maxlength: [80, 'Vault name cannot exceed 80 characters'],
-        },
-        description: {
-            type: String,
-            trim: true,
-            maxlength: [500, 'Description cannot exceed 500 characters'],
-        },
-        coverImage: {
-            type: String,
-            default: null,
-        },
-        emoji: {
-            type: String,
-            default: '👪',
-        },
-        category: {
-            type: String,
-            enum: [
-                'family',
-                'wedding',
-                'trip',
-                'friends',
-                'project',
-                'other',
-            ],
-            default: 'family',
-        },
-        color: {
-            type: String,
-            default: '#6366f1', // indigo
-        },
-        createdBy: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
-            required: true,
-        },
-        members: [memberSchema],
-        memories: [vaultMemorySchema],
-        invites: [inviteSchema],
-
-        // Stats (computed on save / via aggregation)
-        stats: {
-            totalMemories: { type: Number, default: 0 },
-            totalMembers: { type: Number, default: 0 },
-            totalSize: { type: Number, default: 0 },
-        },
-
-        isArchived: {
-            type: Boolean,
-            default: false,
-        },
-    },
-    {
-        timestamps: true,
+class FamilyVault {
+    constructor(data) {
+        this._id = data._id || `vault_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        this.name = data.name;
+        this.description = data.description || '';
+        this.coverImage = data.coverImage || null;
+        this.emoji = data.emoji || '👪';
+        this.category = data.category || 'family';
+        this.color = data.color || '#6366f1';
+        this.createdBy = data.createdBy;
+        this.members = data.members || [];
+        this.memories = data.memories || [];
+        this.invites = data.invites || [];
+        this.stats = data.stats || {
+            totalMemories: 0,
+            totalMembers: 0,
+            totalSize: 0,
+        };
+        this.isArchived = data.isArchived || false;
+        this.createdAt = data.createdAt || new Date();
+        this.updatedAt = data.updatedAt || new Date();
     }
-);
 
-// Indexes
-familyVaultSchema.index({ createdBy: 1 });
-familyVaultSchema.index({ 'members.userId': 1 });
-familyVaultSchema.index({ 'invites.code': 1 });
+    static async find(query = {}) {
+        const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+        return items.filter(item => {
+            for (let key in query) {
+                if (query[key] !== undefined && item[key] !== query[key]) return false;
+            }
+            return true;
+        }).map(item => new FamilyVault(item));
+    }
 
-// Static: generate a unique invite code
-familyVaultSchema.statics.generateInviteCode = function () {
-    return crypto.randomBytes(6).toString('hex'); // 12-char hex code
-};
+    static async findById(id) {
+        const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+        const item = items.find(i => i._id === id);
+        return item ? new FamilyVault(item) : null;
+    }
 
-// Pre-save: update stats
-familyVaultSchema.pre('save', function (next) {
-    this.stats.totalMembers = this.members.length;
-    this.stats.totalMemories = this.memories.length;
-    next();
-});
+    async save() {
+        const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
 
-// Method: check if a user is a member
-familyVaultSchema.methods.isMember = function (userId) {
-    return this.members.some(
-        (m) => m.userId.toString() === userId.toString()
-    );
-};
+        this.stats.totalMembers = this.members.length;
+        this.stats.totalMemories = this.memories.length;
 
-// Method: get member role
-familyVaultSchema.methods.getMemberRole = function (userId) {
-    const member = this.members.find(
-        (m) => m.userId.toString() === userId.toString()
-    );
-    return member ? member.role : null;
-};
+        this.updatedAt = new Date();
+        const index = items.findIndex(i => i._id === this._id);
+        if (index !== -1) {
+            items[index] = { ...this };
+        } else {
+            items.push(this);
+        }
+        fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
+        return this;
+    }
 
-// Method: can user perform action
-familyVaultSchema.methods.canPerform = function (userId, action) {
-    const role = this.getMemberRole(userId);
-    if (!role) return false;
+    static async create(data) {
+        const vault = new FamilyVault(data);
+        await vault.save();
+        return vault;
+    }
 
-    const permissions = {
-        admin: [
-            'view',
-            'upload',
-            'delete',
-            'invite',
-            'manage_members',
-            'edit_vault',
-            'archive',
-        ],
-        contributor: ['view', 'upload', 'invite'],
-        viewer: ['view'],
-    };
+    static generateInviteCode() {
+        return crypto.randomBytes(6).toString('hex');
+    }
 
-    return permissions[role]?.includes(action) || false;
-};
+    isMember(userId) {
+        return this.members.some(m => m.userId.toString() === userId.toString());
+    }
 
-export default mongoose.model('FamilyVault', familyVaultSchema);
+    getMemberRole(userId) {
+        const member = this.members.find(m => m.userId.toString() === userId.toString());
+        return member ? member.role : null;
+    }
+
+    canPerform(userId, action) {
+        const role = this.getMemberRole(userId);
+        if (!role) return false;
+        const permissions = {
+            admin: ['view', 'upload', 'delete', 'invite', 'manage_members', 'edit_vault', 'archive'],
+            contributor: ['view', 'upload', 'invite'],
+            viewer: ['view'],
+        };
+        return permissions[role]?.includes(action) || false;
+    }
+}
+
+export default FamilyVault;

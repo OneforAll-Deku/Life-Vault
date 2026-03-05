@@ -118,12 +118,16 @@ export const getMemories = async (req, res, next) => {
       results = await pineconeService.searchMemories(" ", userId, parseInt(limit)) || [];
     }
 
-    const memories = (results || []).map(r => {
+    const memories = (Array.isArray(results) ? results : []).map(r => {
       if (!r) return null;
+      // Extract metadata safely depending on format
+      const metadata = r.metadata || r.record || r;
+      if (!metadata || typeof metadata !== 'object') return null;
+
       return {
-        ...(r.metadata || r.record || r),
-        _id: r.id,
-        id: r.id,
+        ...metadata,
+        _id: r.id || metadata._id || metadata.id,
+        id: r.id || metadata.id,
         score: r.score || 0
       };
     }).filter(Boolean);
@@ -162,12 +166,16 @@ export const searchMemories = async (req, res, next) => {
     console.log(`🔍 Searching Pinecone for user ${userId}: "${searchTerm}"`);
     const results = await pineconeService.searchMemories(searchTerm, userId, parseInt(limit));
 
-    const memories = (results || []).map(r => {
+    const memories = (Array.isArray(results) ? results : []).map(r => {
       if (!r) return null;
+      // Extract metadata safely depending on format
+      const metadata = r.metadata || r.record || r;
+      if (!metadata || typeof metadata !== 'object') return null;
+
       return {
-        ...(r.metadata || r.record || r),
-        _id: r.id,
-        id: r.id,
+        ...metadata,
+        _id: r.id || metadata._id || metadata.id,
+        id: r.id || metadata.id,
         score: r.score || 0
       };
     }).filter(Boolean);

@@ -1,236 +1,107 @@
-import mongoose from 'mongoose';
+import fs from 'fs';
+import path from 'path';
 import { VERIFICATION_RESULT } from '../config/constants.js';
 
-const questCompletionSchema = new mongoose.Schema({
-  // References
-  questId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Quest',
-    required: true,
-    index: true
-  },
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-    index: true
-  },
-  campaignId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Campaign',
-    index: true
-  },
+const DATA_FILE = path.join(process.cwd(), 'data', 'questcompletions.json');
 
-  // Status
-  status: {
-    type: String,
-    enum: ['pending', 'verifying', 'completed', 'failed', 'rejected'],
-    default: 'pending'
-  },
-  attemptNumber: {
-    type: Number,
-    default: 1
-  },
+// Ensure data folder and file exist
+if (!fs.existsSync(path.dirname(DATA_FILE))) {
+  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+}
+if (!fs.existsSync(DATA_FILE)) {
+  fs.writeFileSync(DATA_FILE, JSON.stringify([]));
+}
 
-  // Submitted Data
-  submission: {
-    // Photo/Media
-    photoUrl: { type: String },
-    photoIpfsHash: { type: String },
-    thumbnailUrl: { type: String },
-    
-    // Location Data
-    location: {
-      latitude: { type: Number },
-      longitude: { type: Number },
-      accuracy: { type: Number }, // meters
-      altitude: { type: Number },
-      heading: { type: Number },
-      speed: { type: Number },
-      timestamp: { type: Date }
-    },
-    
-    // QR Code
-    qrCodeScanned: { type: String },
-    
-    // Device Info (for anti-spoofing)
-    deviceInfo: {
-      platform: { type: String },
-      osVersion: { type: String },
-      appVersion: { type: String },
-      deviceId: { type: String },
-      isEmulator: { type: Boolean },
-      isMockLocation: { type: Boolean }
-    },
-    
-    // Timestamps
-    capturedAt: { type: Date },
-    submittedAt: { type: Date, default: Date.now }
-  },
-
-  // Verification Results
-  verification: {
-    // Overall Result
-    overallResult: {
-      type: String,
-      enum: Object.values(VERIFICATION_RESULT),
-      default: VERIFICATION_RESULT.PENDING
-    },
-    overallScore: { type: Number, min: 0, max: 1 },
-    
-    // GPS Verification
-    gps: {
-      passed: { type: Boolean },
-      distanceMeters: { type: Number },
-      withinRadius: { type: Boolean },
-      message: { type: String }
-    },
-    
-    // Time Window Verification
-    timeWindow: {
-      passed: { type: Boolean },
-      submissionTime: { type: String },
-      allowedWindow: { type: String },
-      message: { type: String }
-    },
-    
-    // AI Vision Verification
-    aiVision: {
-      passed: { type: Boolean },
-      confidence: { type: Number },
-      detectedObjects: [{ 
-        object: String, 
-        confidence: Number 
-      }],
-      requiredObjectsFound: [{ type: String }],
-      requiredObjectsMissing: [{ type: String }],
-      isBlurry: { type: Boolean },
-      hasFace: { type: Boolean },
-      isSelfie: { type: Boolean },
-      rawResponse: { type: mongoose.Schema.Types.Mixed },
-      message: { type: String }
-    },
-    
-    // QR Code Verification
-    qrCode: {
-      passed: { type: Boolean },
-      codeMatched: { type: Boolean },
-      message: { type: String }
-    },
-    
-    // Anti-Spoofing Checks
-    antiSpoofing: {
-      passed: { type: Boolean },
-      checks: [{
-        check: String,
-        passed: Boolean,
-        details: String
-      }],
-      riskScore: { type: Number, min: 0, max: 1 }
-    },
-    
-    // Timestamps
-    startedAt: { type: Date },
-    completedAt: { type: Date },
-    processingTime: { type: Number } // milliseconds
-  },
-
-  // Rewards
-  rewards: {
-    aptAmount: { type: Number, default: 0 },
-    points: { type: Number, default: 0 },
-    badgeAwarded: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Badge'
-    },
-    nftMinted: { type: Boolean, default: false },
-    nftTokenId: { type: String },
-    nftTxHash: { type: String }
-  },
-
-  // Blockchain Transaction
-  blockchain: {
-    txHash: { type: String },
-    txVersion: { type: Number },
-    blockNumber: { type: Number },
-    gasUsed: { type: Number },
-    status: { type: String },
-    confirmedAt: { type: Date }
-  },
-
-  // Timestamps
-  startedAt: { type: Date },
-  completedAt: { type: Date },
-  failedAt: { type: Date },
-  
-  // Failure Details
-  failure: {
-    code: { type: String },
-    reason: { type: String },
-    details: { type: mongoose.Schema.Types.Mixed },
-    canRetry: { type: Boolean, default: true }
-  },
-
-  // Metadata
-  metadata: {
-    ipAddress: { type: String },
-    userAgent: { type: String },
-    referrer: { type: String }
+class QuestCompletion {
+  constructor(data) {
+    this._id = data._id || `compl_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    this.questId = data.questId;
+    this.userId = data.userId;
+    this.campaignId = data.campaignId || null;
+    this.status = data.status || 'pending';
+    this.attemptNumber = data.attemptNumber || 1;
+    this.submission = data.submission || { submittedAt: new Date() };
+    this.verification = data.verification || { overallResult: VERIFICATION_RESULT.PENDING, overallScore: 0 };
+    this.rewards = data.rewards || { aptAmount: 0, points: 0 };
+    this.blockchain = data.blockchain || {};
+    this.startedAt = data.startedAt || null;
+    this.completedAt = data.completedAt || null;
+    this.failedAt = data.failedAt || null;
+    this.failure = data.failure || { canRetry: true };
+    this.metadata = data.metadata || {};
+    this.createdAt = data.createdAt || new Date();
+    this.updatedAt = data.updatedAt || new Date();
   }
-}, {
-  timestamps: true
-});
 
-// Compound Indexes
-questCompletionSchema.index({ questId: 1, userId: 1 });
-questCompletionSchema.index({ userId: 1, status: 1, createdAt: -1 });
-questCompletionSchema.index({ questId: 1, status: 1 });
-questCompletionSchema.index({ campaignId: 1, userId: 1 });
-
-// Virtual: Processing Duration
-questCompletionSchema.virtual('processingDuration').get(function() {
-  if (this.startedAt && this.completedAt) {
-    return this.completedAt - this.startedAt;
+  static async find(query = {}) {
+    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    return items.filter(item => {
+      for (let key in query) {
+        if (query[key] !== undefined && item[key] !== query[key]) return false;
+      }
+      return true;
+    }).map(item => new QuestCompletion(item));
   }
-  return null;
-});
 
-// Method: Mark as verified
-questCompletionSchema.methods.markAsCompleted = async function(verificationData, rewardsData, blockchainData) {
-  this.status = 'completed';
-  this.completedAt = new Date();
-  
-  if (verificationData) {
-    this.verification = { ...this.verification, ...verificationData };
-    this.verification.overallResult = VERIFICATION_RESULT.PASSED;
+  static async findOne(query) {
+    const items = await this.find(query);
+    return items.length > 0 ? items[0] : null;
+  }
+
+  static async countDocuments(query) {
+    const items = await this.find(query);
+    return items.length;
+  }
+
+  static async findById(id) {
+    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    const item = items.find(i => i._id === id);
+    return item ? new QuestCompletion(item) : null;
+  }
+
+  async save() {
+    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    this.updatedAt = new Date();
+    const index = items.findIndex(i => i._id === this._id);
+    if (index !== -1) {
+      items[index] = { ...this };
+    } else {
+      items.push(this);
+    }
+    fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
+    return this;
+  }
+
+  static async create(data) {
+    const completion = new QuestCompletion(data);
+    await completion.save();
+    return completion;
+  }
+
+  async markAsCompleted(verificationData, rewardsData, blockchainData) {
+    this.status = 'completed';
+    this.completedAt = new Date();
+    if (verificationData) {
+      this.verification = { ...this.verification, ...verificationData, overallResult: VERIFICATION_RESULT.PASSED, completedAt: new Date() };
+    }
+    if (rewardsData) this.rewards = rewardsData;
+    if (blockchainData) this.blockchain = blockchainData;
+    return this.save();
+  }
+
+  async markAsFailed(failureCode, reason, details = {}) {
+    this.status = 'failed';
+    this.failedAt = new Date();
+    this.failure = {
+      code: failureCode,
+      reason,
+      details,
+      canRetry: !['ALREADY_COMPLETED', 'QUEST_EXPIRED', 'SPOOFING_DETECTED'].includes(failureCode)
+    };
+    this.verification.overallResult = VERIFICATION_RESULT.FAILED;
     this.verification.completedAt = new Date();
+    return this.save();
   }
-  
-  if (rewardsData) {
-    this.rewards = rewardsData;
-  }
-  
-  if (blockchainData) {
-    this.blockchain = blockchainData;
-  }
-  
-  return this.save();
-};
+}
 
-// Method: Mark as failed
-questCompletionSchema.methods.markAsFailed = async function(failureCode, reason, details = {}) {
-  this.status = 'failed';
-  this.failedAt = new Date();
-  this.failure = {
-    code: failureCode,
-    reason,
-    details,
-    canRetry: !['ALREADY_COMPLETED', 'QUEST_EXPIRED', 'SPOOFING_DETECTED'].includes(failureCode)
-  };
-  this.verification.overallResult = VERIFICATION_RESULT.FAILED;
-  this.verification.completedAt = new Date();
-  
-  return this.save();
-};
-
-export default mongoose.model('QuestCompletion', questCompletionSchema);
+export default QuestCompletion;

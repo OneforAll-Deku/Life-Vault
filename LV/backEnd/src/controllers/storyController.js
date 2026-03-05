@@ -321,16 +321,25 @@ export const getStory = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const story = await Story.findById(id)
-      .populate('creatorId', 'name email avatar')
-      .populate('chapters');
+    const storyData = await Story.findById(id);
 
-    if (!story) {
+    if (!storyData) {
       return res.status(404).json({
         success: false,
         message: 'Story not found'
       });
     }
+
+    // Manual population
+    const creator = await User.findById(storyData.creatorId);
+    const chapters = await StoryChapter.find({ storyId: id });
+
+    // Add populated data to a new object to avoid modifying the instance if needed
+    const story = {
+      ...storyData,
+      creatorId: creator ? { _id: creator._id, name: creator.name, email: creator.email, avatar: creator.avatar } : null,
+      chapters: chapters
+    };
 
     const { isCreator, isRecipient } = getUserRole(
       story,
@@ -480,16 +489,22 @@ export const getStoryByCode = async (req, res, next) => {
   try {
     const { shortCode } = req.params;
 
-    const story = await Story.findOne({ shortCode })
-      .populate('creatorId', 'name avatar')
-      .select('-encryptionKey');
+    const storyData = await Story.findOne({ shortCode });
 
-    if (!story) {
+    if (!storyData) {
       return res.status(404).json({
         success: false,
         message: 'Story not found'
       });
     }
+
+    // Manual population for creator
+    const creator = await User.findById(storyData.creatorId);
+    const story = {
+      ...storyData,
+      creatorId: creator ? { _id: creator._id, name: creator.name, avatar: creator.avatar } : null
+    };
+    delete story.encryptionKey;
 
     // If user is authenticated, return full story data
     if (req.user) {
@@ -798,14 +813,17 @@ export const unlockChapter = async (req, res, next) => {
 // In storyController.js — getMyStories
 export const getMyStories = async (req, res, next) => {
   try {
-    const stories = await Story.find({ creatorId: req.user._id })
-      .populate('chapters')
-      .sort({ createdAt: -1 });
+    const stories = await Story.find({ creatorId: req.user._id });
+    // Manual sort
+    stories.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-    const storiesWithStatus = stories.map((story) => {
-      const storyObj = story.toObject();
+    const storiesWithStatus = await Promise.all(stories.map(async (story) => {
+      const storyObj = JSON.parse(JSON.stringify(story)); // Deep clone
 
-      storyObj.chapters = (storyObj.chapters || []).map((ch) => {
+      // Manual population for chapters
+      const chapters = await StoryChapter.find({ storyId: story._id });
+
+      storyObj.chapters = (chapters || []).map((ch) => {
         const userUnlock = (ch.unlockedBy || []).find(
           (u) => u.userId?.toString() === req.user._id.toString()
         );
@@ -873,15 +891,19 @@ export const getReceivedStories = async (req, res, next) => {
       });
     }
 
-    const stories = await Story.find(query)
-      .populate('creatorId', 'name email avatar')
-      .populate('chapters')
-      .sort({ createdAt: -1 });
+    const stories = await Story.find(query);
+    // Manual sort
+    stories.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-    const storiesWithStatus = stories.map((story) => {
-      const storyObj = story.toObject();
+    const storiesWithStatus = await Promise.all(stories.map(async (story) => {
+      const storyObj = JSON.parse(JSON.stringify(story));
 
-      storyObj.chapters = (storyObj.chapters || []).map((ch) => {
+      // Manual population
+      const creator = await User.findById(story.creatorId);
+      const chapters = await StoryChapter.find({ storyId: story._id });
+
+      storyObj.creatorId = creator ? { _id: creator._id, name: creator.name, email: creator.email, avatar: creator.avatar } : null;
+      storyObj.chapters = (chapters || []).map((ch) => {
         const userUnlock = (ch.unlockedBy || []).find(
           (u) => u.userId?.toString() === req.user._id.toString()
         );
@@ -1187,10 +1209,19 @@ export const updateChapterStatus = async (req, res, next) => {
 export const getChapterHistory = async (req, res, next) => {
   try {
     const { chapterId } = req.params;
-    const chapter = await StoryChapter.findById(chapterId).populate('versions.authorId', 'name avatar');
+    const chapter = await StoryChapter.findById(chapterId);
     if (!chapter) return res.status(404).json({ success: false, message: 'Chapter not found' });
 
-    res.json({ success: true, data: chapter.versions });
+    // Manual population for versions authorId
+    const versionsWithAuthors = await Promise.all((chapter.versions || []).map(async (v) => {
+      const author = await User.findById(v.authorId);
+      return {
+        ...v,
+        authorId: author ? { _id: author._id, name: author.name, avatar: author.avatar } : { _id: v.authorId }
+      };
+    }));
+
+    res.json({ success: true, data: versionsWithAuthors });
   } catch (error) {
     next(error);
   }

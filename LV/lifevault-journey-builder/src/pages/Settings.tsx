@@ -36,7 +36,7 @@ import { useToast } from '@/hooks/use-toast';
 
 const Settings: React.FC = () => {
   const { user, logout, updateUser } = useAuth();
-  const { disconnect } = useWallet();
+  const { disconnect, network } = useWallet();
   const [copied, setCopied] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -216,7 +216,7 @@ const Settings: React.FC = () => {
                     <p className="text-2xl font-bold text-slate-900">{user?.aptosBalance || 0} <span className="text-indigo-600 text-sm">APT</span></p>
                   </div>
                   <a
-                    href={`https://explorer.aptoslabs.com/account/${user.aptosAddress}?network=testnet`}
+                    href={`https://explorer.aptoslabs.com/account/${user.aptosAddress}?network=${network?.name?.toLowerCase() || import.meta.env.VITE_APTOS_NETWORK || 'devnet'}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="p-5 rounded-xl border border-slate-100 hover:bg-slate-50 transition-all group"

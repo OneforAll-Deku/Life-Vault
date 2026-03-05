@@ -1,359 +1,133 @@
-import mongoose from 'mongoose';
+import fs from 'fs';
+import path from 'path';
 import crypto from 'crypto';
 import { QUEST_TYPES, QUEST_STATUS, VERIFICATION_LAYERS, DEFAULTS } from '../config/constants.js';
 
-const questSchema = new mongoose.Schema({
-  // Basic Info
-  title: {
-    type: String,
-    required: [true, 'Quest title is required'],
-    trim: true,
-    maxlength: [100, 'Title cannot exceed 100 characters']
-  },
-  description: {
-    type: String,
-    required: [true, 'Quest description is required'],
-    trim: true,
-    maxlength: [1000, 'Description cannot exceed 1000 characters']
-  },
-  shortCode: {
-    type: String,
-    unique: true,
-    index: true
-  },
+const DATA_FILE = path.join(process.cwd(), 'data', 'quests.json');
 
-  // Creator Info
-  creatorId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-    index: true
-  },
-  creatorType: {
-    type: String,
-    enum: ['user', 'brand', 'government', 'organization'],
-    default: 'user'
-  },
-  campaignId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Campaign',
-    index: true
-  },
+// Ensure data folder and file exist
+if (!fs.existsSync(path.dirname(DATA_FILE))) {
+  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+}
+if (!fs.existsSync(DATA_FILE)) {
+  fs.writeFileSync(DATA_FILE, JSON.stringify([]));
+}
 
-  // Quest Type & Configuration
-  questType: {
-    type: String,
-    enum: Object.values(QUEST_TYPES),
-    required: true
-  },
-  isPublic: {
-    type: Boolean,
-    default: true
-  },
+class Quest {
+  constructor(data) {
+    this._id = data._id || `quest_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    this.title = data.title;
+    this.description = data.description;
+    this.shortCode = data.shortCode || crypto.randomBytes(4).toString('hex').toUpperCase();
+    this.creatorId = data.creatorId;
+    this.creatorType = data.creatorType || 'user';
+    this.campaignId = data.campaignId || null;
+    this.questType = data.questType;
+    this.isPublic = data.isPublic ?? true;
+    this.location = data.location || {
+      name: '',
+      address: '',
+      coordinates: { type: 'Point', coordinates: [0, 0] },
+      radiusMeters: DEFAULTS.GPS_RADIUS_METERS,
+    };
+    this.timeWindow = data.timeWindow || { enabled: false };
+    this.qrCode = data.qrCode || { enabled: false };
+    this.aiVerification = data.aiVerification || { enabled: false };
+    this.verificationLayers = data.verificationLayers || [];
+    this.rewards = data.rewards || { aptAmount: 0, points: 0 };
+    this.budget = data.budget || { totalAptAllocated: 0, aptRemaining: 0, maxCompletions: null, maxCompletionsPerUser: 1 };
+    this.status = data.status || QUEST_STATUS.DRAFT;
+    this.startDate = data.startDate || null;
+    this.endDate = data.endDate || null;
+    this.stats = data.stats || {
+      totalAttempts: 0,
+      totalCompletions: 0,
+      totalRewardsDistributed: 0,
+      averageCompletionTime: 0,
+      failureReasons: { locationMismatch: 0, timeWindowClosed: 0, aiRejected: 0, qrInvalid: 0 }
+    };
+    this.coverImage = data.coverImage || null;
+    this.thumbnailImage = data.thumbnailImage || null;
+    this.galleryImages = data.galleryImages || [];
+    this.onChainQuestId = data.onChainQuestId || null;
+    this.contractAddress = data.contractAddress || null;
+    this.txHash = data.txHash || null;
+    this.tags = data.tags || [];
+    this.category = data.category || 'other';
+    this.difficulty = data.difficulty || 'easy';
+    this.estimatedTime = data.estimatedTime || null;
+    this.isFeatured = data.isFeatured || false;
+    this.isSponsored = data.isSponsored || false;
+    this.requiresApproval = data.requiresApproval || false;
+    this.metadata = data.metadata || {};
+    this.createdAt = data.createdAt || new Date();
+    this.updatedAt = data.updatedAt || new Date();
 
-  // Location Requirements
-  location: {
-    name: { type: String },
-    address: { type: String },
-    coordinates: {
-      type: {
-        type: String,
-        enum: ['Point'],
-        default: 'Point'
-      },
-      coordinates: {
-        type: [Number], // [longitude, latitude]
-        required: function() { 
-          return this.questType === QUEST_TYPES.LOCATION || 
-                 this.questType === QUEST_TYPES.TWIN_LOCK;
-        }
+    // Sync QR code hash
+    if (this.qrCode.enabled && this.qrCode.code && !this.qrCode.codeHash) {
+      this.qrCode.codeHash = crypto.createHash('sha256').update(this.qrCode.code).digest('hex');
+    }
+  }
+
+  static async find(query = {}) {
+    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    return items.filter(item => {
+      for (let key in query) {
+        if (query[key] !== undefined && item[key] !== query[key]) return false;
       }
-    },
-    radiusMeters: {
-      type: Number,
-      default: DEFAULTS.GPS_RADIUS_METERS,
-      min: 10,
-      max: 5000
-    },
-    country: { type: String },
-    city: { type: String }
-  },
+      return true;
+    }).map(item => new Quest(item));
+  }
 
-  // Time Window Requirements
-  timeWindow: {
-    enabled: { type: Boolean, default: false },
-    startTime: { type: String }, // HH:MM format
-    endTime: { type: String },   // HH:MM format
-    timezone: { type: String, default: 'UTC' },
-    specificDates: [{
-      date: Date,
-      startTime: String,
-      endTime: String
-    }],
-    daysOfWeek: [{ type: Number, min: 0, max: 6 }] // 0 = Sunday
-  },
+  static async findOne(query) {
+    const items = await this.find(query);
+    return items.length > 0 ? items[0] : null;
+  }
 
-  // QR Code Requirements
-  qrCode: {
-    enabled: { type: Boolean, default: false },
-    code: { type: String, select: false }, // Secret QR content
-    codeHash: { type: String }, // For verification without exposing code
-    regenerateDaily: { type: Boolean, default: false },
-    lastRegenerated: { type: Date }
-  },
+  static async findById(id) {
+    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    const item = items.find(i => i._id === id);
+    return item ? new Quest(item) : null;
+  }
 
-  // AI Vision Requirements
-  aiVerification: {
-    enabled: { type: Boolean, default: false },
-    prompt: { 
-      type: String,
-      maxlength: [500, 'AI prompt cannot exceed 500 characters']
-    },
-    requiredObjects: [{ type: String }], // e.g., ["Taj Mahal", "person", "smile"]
-    minimumConfidence: { type: Number, default: 0.75, min: 0, max: 1 },
-    rejectBlurry: { type: Boolean, default: true },
-    requireFace: { type: Boolean, default: false },
-    requireSelfie: { type: Boolean, default: false }
-  },
-
-  // Verification Layers (for Twin-Lock)
-  verificationLayers: [{
-    type: String,
-    enum: Object.values(VERIFICATION_LAYERS)
-  }],
-
-  // Rewards
-  rewards: {
-    aptAmount: { type: Number, default: 0, min: 0 },
-    points: { type: Number, default: 0, min: 0 },
-    badgeId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Badge'
-    },
-    nftMetadata: {
-      enabled: { type: Boolean, default: false },
-      name: { type: String },
-      description: { type: String },
-      imageUrl: { type: String },
-      attributes: [{ 
-        trait_type: String, 
-        value: mongoose.Schema.Types.Mixed 
-      }]
-    },
-    customReward: {
-      type: { type: String },
-      value: mongoose.Schema.Types.Mixed
+  async save() {
+    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    this.updatedAt = new Date();
+    const index = items.findIndex(i => i._id === this._id);
+    if (index !== -1) {
+      items[index] = { ...this };
+    } else {
+      items.push(this);
     }
-  },
-
-  // Budget & Limits
-  budget: {
-    totalAptAllocated: { type: Number, default: 0 },
-    aptRemaining: { type: Number, default: 0 },
-    maxCompletions: { type: Number, default: null }, // null = unlimited
-    maxCompletionsPerUser: { type: Number, default: 1 },
-    dailyLimit: { type: Number, default: null }
-  },
-
-  // Status & Scheduling
-  status: {
-    type: String,
-    enum: Object.values(QUEST_STATUS),
-    default: QUEST_STATUS.DRAFT
-  },
-  startDate: { type: Date },
-  endDate: { type: Date },
-  
-  // Statistics
-  stats: {
-    totalAttempts: { type: Number, default: 0 },
-    totalCompletions: { type: Number, default: 0 },
-    totalRewardsDistributed: { type: Number, default: 0 },
-    averageCompletionTime: { type: Number, default: 0 }, // seconds
-    failureReasons: {
-      locationMismatch: { type: Number, default: 0 },
-      timeWindowClosed: { type: Number, default: 0 },
-      aiRejected: { type: Number, default: 0 },
-      qrInvalid: { type: Number, default: 0 }
-    }
-  },
-
-  // Media
-  coverImage: { type: String },
-  thumbnailImage: { type: String },
-  galleryImages: [{ type: String }],
-
-  // Blockchain
-  onChainQuestId: { type: String },
-  contractAddress: { type: String },
-  txHash: { type: String },
-
-  // Tags & Categories
-  tags: [{ type: String }],
-  category: {
-    type: String,
-    enum: ['adventure', 'food', 'culture', 'shopping', 'nature', 'entertainment', 'sports', 'education', 'other'],
-    default: 'other'
-  },
-
-  // Difficulty
-  difficulty: {
-    type: String,
-    enum: ['easy', 'medium', 'hard', 'expert'],
-    default: 'easy'
-  },
-  estimatedTime: { type: Number }, // minutes
-
-  // Flags
-  isFeatured: { type: Boolean, default: false },
-  isSponsored: { type: Boolean, default: false },
-  requiresApproval: { type: Boolean, default: false },
-
-  // Metadata
-  metadata: {
-    type: Map,
-    of: mongoose.Schema.Types.Mixed
+    fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
+    return this;
   }
-}, {
-  timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
-});
 
-// Indexes
-questSchema.index({ 'location.coordinates': '2dsphere' });
-questSchema.index({ status: 1, startDate: 1, endDate: 1 });
-questSchema.index({ creatorId: 1, status: 1 });
-questSchema.index({ campaignId: 1 });
-questSchema.index({ tags: 1 });
-questSchema.index({ category: 1 });
+  static async create(data) {
+    const quest = new Quest(data);
+    await quest.save();
+    return quest;
+  }
 
-// Generate short code before saving
-questSchema.pre('save', function(next) {
-  if (!this.shortCode) {
-    this.shortCode = crypto.randomBytes(4).toString('hex').toUpperCase();
+  get isActive() {
+    const now = new Date();
+    return this.status === QUEST_STATUS.ACTIVE &&
+      (!this.startDate || now >= new Date(this.startDate)) &&
+      (!this.endDate || now <= new Date(this.endDate));
   }
-  
-  // Generate QR code hash if QR is enabled
-  if (this.qrCode?.enabled && this.qrCode?.code && !this.qrCode?.codeHash) {
-    this.qrCode.codeHash = crypto
-      .createHash('sha256')
-      .update(this.qrCode.code)
-      .digest('hex');
-  }
-  
-  next();
-});
 
-// Virtual: Check if quest is currently active
-questSchema.virtual('isActive').get(function() {
-  const now = new Date();
-  return this.status === QUEST_STATUS.ACTIVE &&
-         (!this.startDate || now >= this.startDate) &&
-         (!this.endDate || now <= this.endDate);
-});
+  // Mocking nearby search with simple radius check if needed, but for now empty
+  static async findNearby(longitude, latitude, maxDistanceMeters = 5000, options = {}) {
+    const quests = await this.find({ status: QUEST_STATUS.ACTIVE });
+    // Simplified distance check (heuristic)
+    return quests.filter(q => {
+      if (!q.location.coordinates || !q.location.coordinates.coordinates) return false;
+      const [qLong, qLat] = q.location.coordinates.coordinates;
+      const dist = Math.sqrt(Math.pow(qLong - longitude, 2) + Math.pow(qLat - latitude, 2));
+      // rough conversion: 0.01 degree ~ 1.1km
+      return dist < (maxDistanceMeters / 111000);
+    }).slice(0, options.limit || 50);
+  }
+}
 
-// Virtual: Check if within time window
-questSchema.virtual('isWithinTimeWindow').get(function() {
-  if (!this.timeWindow?.enabled) return true;
-  
-  const now = new Date();
-  const currentTime = now.toLocaleTimeString('en-US', { 
-    hour12: false, 
-    hour: '2-digit', 
-    minute: '2-digit',
-    timeZone: this.timeWindow.timezone || 'UTC'
-  });
-  
-  if (this.timeWindow.startTime && this.timeWindow.endTime) {
-    return currentTime >= this.timeWindow.startTime && 
-           currentTime <= this.timeWindow.endTime;
-  }
-  
-  return true;
-});
-
-// Virtual: Remaining completions
-questSchema.virtual('remainingCompletions').get(function() {
-  if (!this.budget.maxCompletions) return null;
-  return this.budget.maxCompletions - this.stats.totalCompletions;
-});
-
-// Method: Check if user can attempt
-questSchema.methods.canUserAttempt = async function(userId) {
-  const QuestCompletion = mongoose.model('QuestCompletion');
-  
-  // Check if quest is active
-  if (!this.isActive) {
-    return { canAttempt: false, reason: 'Quest is not active' };
-  }
-  
-  // Check max completions
-  if (this.budget.maxCompletions && 
-      this.stats.totalCompletions >= this.budget.maxCompletions) {
-    return { canAttempt: false, reason: 'Quest has reached maximum completions' };
-  }
-  
-  // Check per-user limit
-  const userCompletions = await QuestCompletion.countDocuments({
-    questId: this._id,
-    userId,
-    status: 'completed'
-  });
-  
-  if (userCompletions >= this.budget.maxCompletionsPerUser) {
-    return { canAttempt: false, reason: 'You have already completed this quest' };
-  }
-  
-  // Check daily limit
-  if (this.budget.dailyLimit) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const todayCompletions = await QuestCompletion.countDocuments({
-      questId: this._id,
-      status: 'completed',
-      completedAt: { $gte: today }
-    });
-    
-    if (todayCompletions >= this.budget.dailyLimit) {
-      return { canAttempt: false, reason: 'Daily limit reached. Try again tomorrow!' };
-    }
-  }
-  
-  // Check budget
-  if (this.rewards.aptAmount > 0 && 
-      this.budget.aptRemaining < this.rewards.aptAmount) {
-    return { canAttempt: false, reason: 'Quest reward budget exhausted' };
-  }
-  
-  return { canAttempt: true };
-};
-
-// Static: Find nearby quests
-questSchema.statics.findNearby = async function(longitude, latitude, maxDistanceMeters = 5000, options = {}) {
-  const query = {
-    status: QUEST_STATUS.ACTIVE,
-    'location.coordinates': {
-      $near: {
-        $geometry: {
-          type: 'Point',
-          coordinates: [longitude, latitude]
-        },
-        $maxDistance: maxDistanceMeters
-      }
-    }
-  };
-  
-  if (options.category) {
-    query.category = options.category;
-  }
-  
-  if (options.questType) {
-    query.questType = options.questType;
-  }
-  
-  return this.find(query).limit(options.limit || 50);
-};
-
-export default mongoose.model('Quest', questSchema);
+export default Quest;
