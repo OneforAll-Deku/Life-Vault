@@ -256,8 +256,9 @@ export const AddMemoryModal: React.FC<AddMemoryModalProps> = ({
 
           setBlockchainStep('confirming');
 
-          // Background update to DB
-          api.patch(`/api/memories/${encodeURIComponent(title)}`, {
+          // Background update to DB — use the memory ID from the create response
+          const memoryId = currentIpfsHash; // IPFS hash is used as the Pinecone record ID
+          api.patch(`/memories/${encodeURIComponent(memoryId)}`, {
             txHash: transactionHash,
             isOnChain: true
           }).catch(err => console.warn('Failed to update DB with tx hash:', err));

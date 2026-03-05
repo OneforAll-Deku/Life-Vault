@@ -3,12 +3,13 @@ import {
   createMemory,
   getMemories,
   getMemory,
+  updateMemory,
   deleteMemory,
   verifyMemory,
   getStats,
   relayMemory,
-  createCapsule,       // NEW
-  claimCapsule,        // NEW
+  createCapsule,
+  claimCapsule,
   searchMemories
 } from '../controllers/memoryController.js';
 import { protect } from '../middleware/authMiddleware.js';
@@ -27,6 +28,7 @@ router.route('/')
 
 router.route('/:id')
   .get(getMemory)
+  .patch(updateMemory)
   .delete(deleteMemory);
 
 router.get('/:id/verify', verifyMemory);

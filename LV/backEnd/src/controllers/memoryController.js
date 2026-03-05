@@ -246,7 +246,58 @@ export const getStats = async (req, res, next) => {
 
 // Exporting placeholder controllers to avoid router errors
 export const getMemory = (req, res) => res.status(200).json({ success: true, data: {} });
-export const updateMemory = (req, res) => res.status(200).json({ success: true, data: {} });
+
+/**
+ * @desc    Update memory (e.g. add txHash after blockchain storage)
+ * @route   PATCH /api/memories/:id
+ * @access  Private
+ */
+export const updateMemory = async (req, res, next) => {
+  try {
+    const memoryId = req.params.id;
+    const updates = req.body;
+    const userId = req.user.id || req.user._id;
+
+    console.log(`📝 Updating memory ${memoryId} with:`, JSON.stringify(updates));
+
+    // Update in Pinecone by upserting with merged data
+    try {
+      // Attempt to get existing record first
+      const existing = await pineconeService.getRecord(memoryId, 'memories');
+      const metadata = existing?.metadata || existing || {};
+
+      // Merge updates
+      const updatedData = {
+        ...metadata,
+        id: memoryId,
+        userId: userId,
+        ...updates,
+        updatedAt: new Date().toISOString()
+      };
+
+      await pineconeService.upsertMemory(updatedData);
+      console.log('✅ Memory updated in Pinecone');
+    } catch (pineconeErr) {
+      console.warn('⚠️ Pinecone update failed, storing update data directly:', pineconeErr.message);
+      // Still try to upsert with what we have
+      await pineconeService.upsertMemory({
+        id: memoryId,
+        userId: userId,
+        ...updates,
+        updatedAt: new Date().toISOString()
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Memory updated',
+      data: { id: memoryId, ...updates }
+    });
+  } catch (error) {
+    console.error('Update memory error:', error);
+    next(error);
+  }
+};
 export const relayMemory = (req, res) => res.status(200).json({ success: true, message: 'Relay simulated' });
 export const createCapsule = (req, res) => res.status(201).json({ success: true, message: 'Capsule simulated' });
 export const claimCapsule = (req, res) => res.status(200).json({ success: true, message: 'Claim simulated' });
