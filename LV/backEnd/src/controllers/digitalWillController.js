@@ -59,12 +59,40 @@ export const createWill = async (req, res, next) => {
 // ── GET all wills for current user ──
 export const getMyWills = async (req, res, next) => {
     try {
-        const wills = await DigitalWill.find({ userId: req.user._id })
-            .sort({ updatedAt: -1 })
-            .populate('beneficiaries.assignedMemories', 'title category ipfsHash')
-            .populate('globalMemories', 'title category ipfsHash');
+        const allWills = await DigitalWill.find({ userId: req.user._id });
 
-        res.json({ success: true, data: { wills, count: wills.length } });
+        // Manual Sort
+        const wills = allWills.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+
+        // Manual Population
+        const populatedWills = await Promise.all(wills.map(async (will) => {
+            const wObj = JSON.parse(JSON.stringify(will));
+
+            // Populate assignedMemories for each beneficiary
+            if (wObj.beneficiaries) {
+                wObj.beneficiaries = await Promise.all(wObj.beneficiaries.map(async (b) => {
+                    if (b.assignedMemories && b.assignedMemories.length > 0) {
+                        b.assignedMemories = await Promise.all(b.assignedMemories.map(async (mId) => {
+                            const m = await Memory.findById(mId);
+                            return m ? { _id: m._id, title: m.title, category: m.category, ipfsHash: m.ipfsHash } : mId;
+                        }));
+                    }
+                    return b;
+                }));
+            }
+
+            // Populate globalMemories
+            if (wObj.globalMemories && wObj.globalMemories.length > 0) {
+                wObj.globalMemories = await Promise.all(wObj.globalMemories.map(async (mId) => {
+                    const m = await Memory.findById(mId);
+                    return m ? { _id: m._id, title: m.title, category: m.category, ipfsHash: m.ipfsHash } : mId;
+                }));
+            }
+
+            return wObj;
+        }));
+
+        res.json({ success: true, data: { wills: populatedWills, count: populatedWills.length } });
     } catch (error) {
         next(error);
     }
@@ -73,14 +101,43 @@ export const getMyWills = async (req, res, next) => {
 // ── GET single will ──
 export const getWill = async (req, res, next) => {
     try {
-        const will = await DigitalWill.findOne({ _id: req.params.id, userId: req.user._id })
-            .populate('beneficiaries.assignedMemories', 'title category ipfsHash thumbnailUrl')
-            .populate('globalMemories', 'title category ipfsHash thumbnailUrl')
-            .populate('activityLog.performedBy', 'name email');
+        const will = await DigitalWill.findOne({ _id: req.params.id, userId: req.user._id });
 
         if (!will) return res.status(404).json({ success: false, message: 'Will not found' });
 
-        res.json({ success: true, data: { will } });
+        const wObj = JSON.parse(JSON.stringify(will));
+
+        // Manual Population
+        if (wObj.beneficiaries) {
+            wObj.beneficiaries = await Promise.all(wObj.beneficiaries.map(async (b) => {
+                if (b.assignedMemories && b.assignedMemories.length > 0) {
+                    b.assignedMemories = await Promise.all(b.assignedMemories.map(async (mId) => {
+                        const m = await Memory.findById(mId);
+                        return m ? { _id: m._id, title: m.title, category: m.category, ipfsHash: m.ipfsHash, thumbnailUrl: m.thumbnailUrl } : mId;
+                    }));
+                }
+                return b;
+            }));
+        }
+
+        if (wObj.globalMemories && wObj.globalMemories.length > 0) {
+            wObj.globalMemories = await Promise.all(wObj.globalMemories.map(async (mId) => {
+                const m = await Memory.findById(mId);
+                return m ? { _id: m._id, title: m.title, category: m.category, ipfsHash: m.ipfsHash, thumbnailUrl: m.thumbnailUrl } : mId;
+            }));
+        }
+
+        if (wObj.activityLog) {
+            wObj.activityLog = await Promise.all(wObj.activityLog.map(async (log) => {
+                if (log.performedBy) {
+                    const u = await User.findById(log.performedBy);
+                    if (u) log.performedBy = { _id: u._id, name: u.name, email: u.email };
+                }
+                return log;
+            }));
+        }
+
+        res.json({ success: true, data: { will: wObj } });
     } catch (error) {
         next(error);
     }
@@ -99,7 +156,7 @@ export const updateWill = async (req, res, next) => {
 
         if (title) will.title = title;
         if (description !== undefined) will.description = description;
-        if (legalTemplate) will.legalTemplate = { ...will.legalTemplate.toObject(), ...legalTemplate };
+        if (legalTemplate) will.legalTemplate = { ...will.legalTemplate, ...legalTemplate };
         if (globalMemories) will.globalMemories = globalMemories;
         if (status && ['draft', 'active', 'revoked'].includes(status)) will.status = status;
 
@@ -111,11 +168,11 @@ export const updateWill = async (req, res, next) => {
         }
 
         if (multiSig) {
-            will.multiSig = { ...will.multiSig.toObject(), ...multiSig };
+            will.multiSig = { ...will.multiSig, ...multiSig };
         }
 
         if (deadManSwitch) {
-            will.deadManSwitch = { ...will.deadManSwitch.toObject(), ...deadManSwitch };
+            will.deadManSwitch = { ...will.deadManSwitch, ...deadManSwitch };
         }
 
         will.logActivity('updated', req.user._id, 'Will updated');
@@ -349,11 +406,19 @@ export const executeWill = async (req, res, next) => {
 // ── GET WILL ACTIVITY LOG ──
 export const getActivity = async (req, res, next) => {
     try {
-        const will = await DigitalWill.findOne({ _id: req.params.id, userId: req.user._id })
-            .populate('activityLog.performedBy', 'name email');
+        const will = await DigitalWill.findOne({ _id: req.params.id, userId: req.user._id });
         if (!will) return res.status(404).json({ success: false, message: 'Will not found' });
 
-        res.json({ success: true, data: { activityLog: will.activityLog } });
+        const activityLog = await Promise.all((will.activityLog || []).map(async (log) => {
+            const entry = JSON.parse(JSON.stringify(log));
+            if (entry.performedBy) {
+                const u = await User.findById(entry.performedBy);
+                if (u) entry.performedBy = { _id: u._id, name: u.name, email: u.email };
+            }
+            return entry;
+        }));
+
+        res.json({ success: true, data: { activityLog } });
     } catch (error) {
         next(error);
     }

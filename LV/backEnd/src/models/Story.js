@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import pineconeService from '../services/pineconeService.js';
-
+import { matchesQuery } from '../utils/queryHelper.js';
 
 const DATA_FILE = path.join(process.cwd(), 'data', 'stories.json');
 
@@ -16,6 +16,7 @@ if (!fs.existsSync(DATA_FILE)) {
 
 class Story {
   constructor(data) {
+    Object.assign(this, data);
     this._id = data._id || `story_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
     this.title = data.title;
     this.description = data.description || '';
@@ -44,69 +45,77 @@ class Story {
   }
 
   static async find(query = {}) {
-    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    let filteredItems = items.filter(item => {
-      // Handle $or queries
-      if (query.$or && Array.isArray(query.$or)) {
-        return query.$or.some(condition => {
-          for (let key in condition) {
-            // Support nested properties like 'recipients.userId'
-            if (key.includes('.')) {
-              const [parent, child] = key.split('.');
-              if (Array.isArray(item[parent])) {
-                return item[parent].some(subItem => subItem[child] === condition[key]);
-              }
-              if (item[parent] && item[parent][child] === condition[key]) return true;
-              return false;
+    try {
+      if (!fs.existsSync(DATA_FILE)) return [];
+      const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+      let filteredItems = items.filter(item => matchesQuery(item, query));
+
+      // Fallback if no items found and we have a creatorId (common in Render environment)
+      if (filteredItems.length === 0 && query.creatorId) {
+        console.log(`🔍 Stories for ${query.creatorId} not in local JSON. checking Pinecone...`);
+        try {
+          const pineconeItems = await pineconeService.listRecords(query.creatorId, 'stories');
+          if (pineconeItems.length > 0) {
+            for (const item of pineconeItems) {
+              const story = new Story(item);
+              await story.save({ skipPinecone: true });
             }
-            if (item[key] === condition[key]) return true;
+            return pineconeItems.map(item => new Story(item));
           }
-          return false;
-        });
-      }
-
-      // Handle standard queries
-      for (let key in query) {
-        if (key === '$or') continue;
-        if (query[key] !== undefined && item[key] !== query[key]) return false;
-      }
-      return true;
-    });
-
-    // Fallback if no items found and we have a creatorId (common in Render environment)
-    if (filteredItems.length === 0 && query.creatorId) {
-      console.log(`🔍 Stories for ${query.creatorId} not in local JSON. checking Pinecone...`);
-      const pineconeItems = await pineconeService.listRecords(query.creatorId, 'stories');
-      if (pineconeItems.length > 0) {
-        // Rehydrate locally
-        for (const item of pineconeItems) {
-          const story = new Story(item);
-          await story.save({ skipPinecone: true });
+        } catch (err) {
+          console.error('Pinecone fallback failed for stories:', err.message);
         }
-        return pineconeItems.map(item => new Story(item));
       }
-    }
 
-    return filteredItems.map(item => new Story(item));
+      return filteredItems.map(item => new Story(item));
+    } catch (err) {
+      console.error('Error reading stories.json:', err.message);
+      return [];
+    }
   }
 
   static async findById(id) {
-    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    let item = items.find(i => i._id === id);
+    try {
+      if (!fs.existsSync(DATA_FILE)) return null;
+      const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+      let item = items.find(i => i._id === id);
 
-    if (!item) {
-      console.log(`🔍 Story ${id} not in local JSON. Checking Pinecone...`);
-      const pineconeRecord = await pineconeService.getRecord(id, 'stories');
-      if (pineconeRecord) {
-        item = pineconeRecord;
-        const story = new Story(item);
-        await story.save({ skipPinecone: true });
-        return story;
+      if (!item) {
+        console.log(`🔍 Story ${id} not in local JSON. Checking Pinecone...`);
+        try {
+          const pineconeRecord = await pineconeService.getRecord(id, 'stories');
+          if (pineconeRecord) {
+            item = pineconeRecord;
+            const story = new Story(item);
+            await story.save({ skipPinecone: true });
+            return story;
+          }
+        } catch (err) {
+          console.error('Pinecone fallback failed for story:', err.message);
+        }
       }
-    }
 
-    return item ? new Story(item) : null;
+      return item ? new Story(item) : null;
+    } catch (err) {
+      console.error('Error in Story.findById:', err.message);
+      return null;
+    }
   }
+
+  static async findOne(query = {}) {
+    const items = await this.find(query);
+    return items.length > 0 ? items[0] : null;
+  }
+
+  toObject() {
+    return { ...this };
+  }
+
+  populate() { return this; }
+  sort() { return this; }
+  limit() { return this; }
+  skip() { return this; }
+  select() { return this; }
 
   async save(options = {}) {
     const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
@@ -116,13 +125,17 @@ class Story {
     if (index !== -1) {
       items[index] = { ...this };
     } else {
-      items.push(this);
+      items.push({ ...this });
     }
     fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
 
     // Sync to Pinecone
     if (!options.skipPinecone) {
-      await pineconeService.upsertStory(this);
+      try {
+        await pineconeService.upsertStory(this);
+      } catch (err) {
+        console.error('Pinecone upsert failed for story:', err.message);
+      }
     }
 
     return this;
@@ -132,6 +145,80 @@ class Story {
     const story = new Story(data);
     await story.save();
     return story;
+  }
+
+  static async findOneAndUpdate(query, update, options = {}) {
+    const item = await this.findOne(query);
+    if (item) {
+      const dataToSet = update.$set || update;
+      Object.assign(item, dataToSet);
+      await item.save();
+      return item;
+    }
+    return null;
+  }
+
+  static async findByIdAndUpdate(id, update) {
+    return this.findOneAndUpdate({ _id: id }, update);
+  }
+
+  static async deleteOne(query) {
+    const item = await this.findOne(query);
+    if (item) {
+      const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+      const filtered = items.filter(i => i._id !== item._id);
+      fs.writeFileSync(DATA_FILE, JSON.stringify(filtered, null, 2));
+
+      // Also delete from Pinecone
+      try {
+        await pineconeService.deleteRecord(item._id, 'stories');
+      } catch (err) {
+        console.error('Pinecone delete failed for story:', err.message);
+      }
+      return { deletedCount: 1 };
+    }
+    return { deletedCount: 0 };
+  }
+
+  static async deleteMany(query) {
+    const items = await this.find(query);
+    let deletedCount = 0;
+    for (const item of items) {
+      await this.deleteOne({ _id: item._id });
+      deletedCount++;
+    }
+    return { deletedCount };
+  }
+
+  static async findOneAndDelete(query) {
+    const item = await this.findOne(query);
+    if (item) {
+      await this.deleteOne({ _id: item._id });
+      return item;
+    }
+    return null;
+  }
+
+  static async updateMany(query, update) {
+    const items = await this.find(query);
+    let modifiedCount = 0;
+    const dataToSet = update.$set || update;
+
+    for (const item of items) {
+      Object.assign(item, dataToSet);
+      await item.save();
+      modifiedCount++;
+    }
+    return { modifiedCount };
+  }
+
+  static async countDocuments(query = {}) {
+    const items = await this.find(query);
+    return items.length;
+  }
+
+  async deleteOne() {
+    return Story.deleteOne({ _id: this._id });
   }
 }
 

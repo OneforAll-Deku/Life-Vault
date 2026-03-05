@@ -12,6 +12,7 @@ import os from 'os';
 import jwt from 'jsonwebtoken';
 import encryptionService from '../services/encryptionService.js';
 import crypto from 'crypto';
+import User from '../models/User.js';
 
 const router = express.Router();
 
@@ -317,15 +318,13 @@ router.get('/:shortCode/', async (req, res, next) => {
     const { shortCode } = req.params;
     const { password: queryPassword, accessToken } = req.query; // can come from query or headers
 
-    const shareLink = await SharedLink.findOne({ shortCode })
-      .populate({
-        path: 'memoryId',
-        select: 'title description category ipfsHash fileType fileName createdAt'
-      })
-      .populate({
-        path: 'userId',
-        select: 'name email'
-      });
+    const shareLink = await SharedLink.findOne({ shortCode });
+
+    if (shareLink) {
+      // Manual population
+      shareLink.memoryId = await Memory.findById(shareLink.memoryId);
+      shareLink.userId = await User.findById(shareLink.userId);
+    }
 
     if (!shareLink) {
       return res.status(404).json({ success: false, message: 'Share link not found' });
@@ -475,9 +474,15 @@ router.get('/user/my-links', protect, async (req, res, next) => {
     const shareLinks = await SharedLink.find({
       userId: req.user._id,
       isRevoked: false
-    })
-      .populate('memoryId', 'title category ipfsHash')
-      .sort({ createdAt: -1 });
+    });
+
+    // Sort manually
+    shareLinks.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // Manual population
+    for (const link of shareLinks) {
+      link.memoryId = await Memory.findById(link.memoryId);
+    }
 
     const baseUrl = getBaseUrl(req);
 
@@ -535,7 +540,8 @@ router.get('/memory/:memoryId', protect, async (req, res, next) => {
       memoryId,
       userId: req.user._id,
       isRevoked: false
-    }).sort({ createdAt: -1 });
+    });
+    shareLinks.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     const baseUrl = getBaseUrl(req);
 

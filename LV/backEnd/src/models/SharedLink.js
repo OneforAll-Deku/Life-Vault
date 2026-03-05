@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { matchesQuery } from '../utils/queryHelper.js';
 
 const DATA_FILE = path.join(process.cwd(), 'data', 'sharedlinks.json');
 
@@ -14,6 +15,7 @@ if (!fs.existsSync(DATA_FILE)) {
 
 class SharedLink {
   constructor(data) {
+    Object.assign(this, data);
     this._id = data._id || `link_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
     this.memoryId = data.memoryId;
     this.userId = data.userId;
@@ -40,12 +42,7 @@ class SharedLink {
 
   static async find(query = {}) {
     const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    return items.filter(item => {
-      for (let key in query) {
-        if (query[key] !== undefined && item[key] !== query[key]) return false;
-      }
-      return true;
-    }).map(item => new SharedLink(item));
+    return items.filter(item => matchesQuery(item, query)).map(item => new SharedLink(item));
   }
 
   static async findOne(query) {
@@ -59,6 +56,92 @@ class SharedLink {
     return item ? new SharedLink(item) : null;
   }
 
+  static async findOneAndUpdate(query, update, options = {}) {
+    const item = await this.findOne(query);
+    if (item) {
+      const dataToSet = update.$set || update;
+      Object.assign(item, dataToSet);
+      await item.save();
+      return item;
+    }
+    return null;
+  }
+
+  static async findByIdAndUpdate(id, update) {
+    const item = await this.findById(id);
+    if (item) {
+      const dataToSet = update.$set || update;
+      Object.assign(item, dataToSet);
+      await item.save();
+      return item;
+    }
+    return null;
+  }
+
+  static async deleteOne(query) {
+    let items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    const initialLength = items.length;
+    items = items.filter(item => !matchesQuery(item, query));
+    if (items.length !== initialLength) {
+      fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
+      return { deletedCount: initialLength - items.length };
+    }
+    return { deletedCount: 0 };
+  }
+
+  static async findOneAndDelete(query) {
+    const item = await this.findOne(query);
+    if (item) {
+      await this.deleteOne({ _id: item._id });
+      return item;
+    }
+    return null;
+  }
+
+  static async updateMany(query, update) {
+    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    let modifiedCount = 0;
+    const dataToSet = update.$set || update;
+
+    const updatedItems = items.map(item => {
+      if (matchesQuery(item, query)) {
+        modifiedCount++;
+        return { ...item, ...dataToSet, updatedAt: new Date() };
+      }
+      return item;
+    });
+
+    if (modifiedCount > 0) {
+      fs.writeFileSync(DATA_FILE, JSON.stringify(updatedItems, null, 2));
+    }
+    return { modifiedCount };
+  }
+
+  static async deleteMany(query) {
+    const items = await this.find(query);
+    let deletedCount = 0;
+    for (const item of items) {
+      await this.deleteOne({ _id: item._id });
+      deletedCount++;
+    }
+    return { deletedCount };
+  }
+
+  static async countDocuments(query = {}) {
+    const items = await this.find(query);
+    return items.length;
+  }
+
+  toObject() {
+    return { ...this };
+  }
+
+  populate() { return this; }
+  sort() { return this; }
+  limit() { return this; }
+  skip() { return this; }
+  select() { return this; }
+
   async save() {
     const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
     this.updatedAt = new Date();
@@ -66,7 +149,7 @@ class SharedLink {
     if (index !== -1) {
       items[index] = { ...this };
     } else {
-      items.push(this);
+      items.push({ ...this });
     }
     fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
     return this;

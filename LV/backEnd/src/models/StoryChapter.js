@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import { matchesQuery } from '../utils/queryHelper.js';
 
 const DATA_FILE = path.join(process.cwd(), 'data', 'storychapters.json');
 
@@ -15,6 +16,7 @@ if (!fs.existsSync(DATA_FILE)) {
 
 class StoryChapter {
   constructor(data) {
+    Object.assign(this, data);
     this._id = data._id || `chap_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
     this.storyId = data.storyId;
     this.chapterNumber = data.chapterNumber;
@@ -37,13 +39,13 @@ class StoryChapter {
   }
 
   static async find(query = {}) {
-    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    return items.filter(item => {
-      for (let key in query) {
-        if (query[key] !== undefined && item[key] !== query[key]) return false;
-      }
-      return true;
-    }).map(item => new StoryChapter(item));
+    try {
+      const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+      return items.filter(item => matchesQuery(item, query)).map(item => new StoryChapter(item));
+    } catch (err) {
+      console.error('Error reading storychapters.json:', err.message);
+      return [];
+    }
   }
 
   static async findOne(query) {
@@ -57,16 +59,45 @@ class StoryChapter {
     return item ? new StoryChapter(item) : null;
   }
 
+  toObject() {
+    return { ...this };
+  }
+
+  populate() { return this; }
+  select() { return this; }
+  sort() { return this; }
+  limit() { return this; }
+  skip() { return this; }
+
   static async deleteMany(query) {
     const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    const filtered = items.filter(item => {
-      for (let key in query) {
-        if (item[key] !== query[key]) return true;
-      }
-      return false;
-    });
+    const filtered = items.filter(item => !matchesQuery(item, query));
     fs.writeFileSync(DATA_FILE, JSON.stringify(filtered, null, 2));
     return { deletedCount: items.length - filtered.length };
+  }
+
+  static async deleteOne(query) {
+    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    const index = items.findIndex(item => matchesQuery(item, query));
+    if (index !== -1) {
+      items.splice(index, 1);
+      fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
+      return { deletedCount: 1 };
+    }
+    return { deletedCount: 0 };
+  }
+
+  static async findOneAndDelete(query) {
+    const item = await this.findOne(query);
+    if (item) {
+      await this.deleteOne({ _id: item._id });
+      return item;
+    }
+    return null;
+  }
+
+  async deleteOne() {
+    return StoryChapter.deleteOne({ _id: this._id });
   }
 
   async save() {
@@ -76,7 +107,7 @@ class StoryChapter {
     if (index !== -1) {
       items[index] = { ...this };
     } else {
-      items.push(this);
+      items.push({ ...this });
     }
     fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
     return this;
@@ -86,6 +117,39 @@ class StoryChapter {
     const chapter = new StoryChapter(data);
     await chapter.save();
     return chapter;
+  }
+
+  static async findOneAndUpdate(query, update) {
+    const item = await this.findOne(query);
+    if (item) {
+      const dataToSet = update.$set || update;
+      Object.assign(item, dataToSet);
+      await item.save();
+      return item;
+    }
+    return null;
+  }
+
+  static async findByIdAndUpdate(id, update) {
+    return this.findOneAndUpdate({ _id: id }, update);
+  }
+
+  static async updateMany(query, update) {
+    const items = await this.find(query);
+    let modifiedCount = 0;
+    const dataToSet = update.$set || update;
+
+    for (const item of items) {
+      Object.assign(item, dataToSet);
+      await item.save();
+      modifiedCount++;
+    }
+    return { modifiedCount };
+  }
+
+  static async countDocuments(query = {}) {
+    const items = await this.find(query);
+    return items.length;
   }
 
   async checkUnlockConditions(userId, submittedData = {}) {
@@ -98,7 +162,7 @@ class StoryChapter {
         storyId: this.storyId,
         chapterNumber: this.chapterNumber - 1,
       });
-      const hasUnlockedPrev = previous?.unlockedBy.some(u => u.userId.toString() === userId.toString());
+      const hasUnlockedPrev = previous?.unlockedBy?.some(u => u.userId?.toString() === userId.toString());
       if (!hasUnlockedPrev) {
         results.unlocked = false;
         results.reason = 'Complete the previous chapter first';
@@ -121,16 +185,17 @@ class StoryChapter {
       }
     }
 
-    // 3. Location/Time etc. (Simplified)
     return results;
   }
 
   async recordUnlock(userId, method) {
+    if (!this.unlockedBy) this.unlockedBy = [];
     this.unlockedBy.push({
       userId,
       unlockedAt: new Date(),
       method,
     });
+    if (!this.stats) this.stats = { viewCount: 0, unlockAttempts: 0 };
     this.stats.viewCount += 1;
     return this.save();
   }

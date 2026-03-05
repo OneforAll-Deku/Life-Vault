@@ -78,7 +78,7 @@ class DeadManSwitchDaemon {
         const daysLeft = (deadline - now) / (1000 * 60 * 60 * 24);
 
         // Load the will owner
-        const user = await User.findById(will.userId).select('name email');
+        const user = await User.findById(will.userId);
         if (!user) {
             console.warn(`⚠️  Will "${will.title}" — owner not found, skipping.`);
             return;

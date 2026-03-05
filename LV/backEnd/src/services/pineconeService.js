@@ -169,6 +169,13 @@ class PineconeService {
      * Delete a memory from Pinecone
      */
     async deleteMemory(memoryId) {
+        return this.deleteRecord(memoryId, 'memories');
+    }
+
+    /**
+     * Generic delete for any piece of data
+     */
+    async deleteRecord(id, namespace = 'memories') {
         try {
             const client = getPineconeClient();
             if (!client) return;

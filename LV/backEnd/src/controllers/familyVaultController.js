@@ -24,12 +24,21 @@ export const createVault = async (req, res, next) => {
             ],
         });
 
-        // Populate creator info for response
-        await vault.populate('members.userId', 'name email avatar');
+        // Populate creator info manual
+        const vaultObj = JSON.parse(JSON.stringify(vault));
+        if (vaultObj.members) {
+            vaultObj.members = await Promise.all(vaultObj.members.map(async (m) => {
+                if (m.userId) {
+                    const u = await User.findById(m.userId);
+                    if (u) m.userId = { _id: u._id, name: u.name, email: u.email, avatar: u.avatar };
+                }
+                return m;
+            }));
+        }
 
         res.status(201).json({
             success: true,
-            data: vault,
+            data: vaultObj,
         });
     } catch (error) {
         next(error);
@@ -41,13 +50,32 @@ export const getMyVaults = async (req, res, next) => {
     try {
         const userId = req.user._id;
 
-        const vaults = await FamilyVault.find({
+        const allVaults = await FamilyVault.find({
             'members.userId': userId,
             isArchived: false,
-        })
-            .populate('members.userId', 'name email avatar')
-            .populate('createdBy', 'name email avatar')
-            .sort({ updatedAt: -1 });
+        });
+
+        // Manual Sort
+        const vaultsData = allVaults.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+
+        // Manual Population
+        const vaults = await Promise.all(vaultsData.map(async (v) => {
+            const vObj = JSON.parse(JSON.stringify(v));
+            if (vObj.members) {
+                vObj.members = await Promise.all(vObj.members.map(async (m) => {
+                    if (m.userId) {
+                        const u = await User.findById(m.userId);
+                        if (u) m.userId = { _id: u._id, name: u.name, email: u.email, avatar: u.avatar };
+                    }
+                    return m;
+                }));
+            }
+            if (vObj.createdBy) {
+                const creator = await User.findById(vObj.createdBy);
+                if (creator) vObj.createdBy = { _id: creator._id, name: creator.name, email: creator.email, avatar: creator.avatar };
+            }
+            return vObj;
+        }));
 
         res.json({
             success: true,
@@ -61,14 +89,41 @@ export const getMyVaults = async (req, res, next) => {
 // ─── Get Vault by ID ───────────────────────────────────────────
 export const getVault = async (req, res, next) => {
     try {
-        const vault = await FamilyVault.findById(req.params.id)
-            .populate('members.userId', 'name email avatar')
-            .populate('createdBy', 'name email avatar')
-            .populate({
-                path: 'memories.memoryId',
-                select: 'title description category ipfsHash fileType fileSize isOnChain createdAt',
-            })
-            .populate('memories.addedBy', 'name email avatar');
+        const vault = await FamilyVault.findById(req.params.id);
+
+        if (!vault) {
+            return res.status(404).json({ success: false, message: 'Vault not found' });
+        }
+
+        const vObj = JSON.parse(JSON.stringify(vault));
+
+        // Manual Population
+        if (vObj.members) {
+            vObj.members = await Promise.all(vObj.members.map(async (m) => {
+                if (m.userId) {
+                    const u = await User.findById(m.userId);
+                    if (u) m.userId = { _id: u._id, name: u.name, email: u.email, avatar: u.avatar };
+                }
+                return m;
+            }));
+        }
+        if (vObj.createdBy) {
+            const creator = await User.findById(vObj.createdBy);
+            if (creator) vObj.createdBy = { _id: creator._id, name: creator.name, email: creator.email, avatar: creator.avatar };
+        }
+        if (vObj.memories) {
+            vObj.memories = await Promise.all(vObj.memories.map(async (mem) => {
+                if (mem.memoryId) {
+                    const m = await Memory.findById(mem.memoryId);
+                    if (m) mem.memoryId = { _id: m._id, title: m.title, description: m.description, category: m.category, ipfsHash: m.ipfsHash, fileType: m.fileType, fileSize: m.fileSize, isOnChain: m.isOnChain, createdAt: m.createdAt };
+                }
+                if (mem.addedBy) {
+                    const u = await User.findById(mem.addedBy);
+                    if (u) mem.addedBy = { _id: u._id, name: u.name, email: u.email, avatar: u.avatar };
+                }
+                return mem;
+            }));
+        }
 
         if (!vault) {
             return res.status(404).json({ success: false, message: 'Vault not found' });
@@ -105,9 +160,19 @@ export const updateVault = async (req, res, next) => {
         if (color) vault.color = color;
 
         await vault.save();
-        await vault.populate('members.userId', 'name email avatar');
 
-        res.json({ success: true, data: vault });
+        const vObj = JSON.parse(JSON.stringify(vault));
+        if (vObj.members) {
+            vObj.members = await Promise.all(vObj.members.map(async (m) => {
+                if (m.userId) {
+                    const u = await User.findById(m.userId);
+                    if (u) m.userId = { _id: u._id, name: u.name, email: u.email, avatar: u.avatar };
+                }
+                return m;
+            }));
+        }
+
+        res.json({ success: true, data: vObj });
     } catch (error) {
         next(error);
     }
@@ -181,14 +246,23 @@ export const addMemory = async (req, res, next) => {
         vault.stats.totalSize += memory.fileSize || 0;
         await vault.save();
 
-        // Re-populate for response
-        await vault.populate({
-            path: 'memories.memoryId',
-            select: 'title description category ipfsHash fileType fileSize isOnChain createdAt',
-        });
-        await vault.populate('memories.addedBy', 'name email avatar');
+        // Re-populate for response manual
+        const vObj = JSON.parse(JSON.stringify(vault));
+        if (vObj.memories) {
+            vObj.memories = await Promise.all(vObj.memories.map(async (mem) => {
+                if (mem.memoryId) {
+                    const m = await Memory.findById(mem.memoryId);
+                    if (m) mem.memoryId = { _id: m._id, title: m.title, description: m.description, category: m.category, ipfsHash: m.ipfsHash, fileType: m.fileType, fileSize: m.fileSize, isOnChain: m.isOnChain, createdAt: m.createdAt };
+                }
+                if (mem.addedBy) {
+                    const u = await User.findById(mem.addedBy);
+                    if (u) mem.addedBy = { _id: u._id, name: u.name, email: u.email, avatar: u.avatar };
+                }
+                return mem;
+            }));
+        }
 
-        res.json({ success: true, data: vault });
+        res.json({ success: true, data: vObj });
     } catch (error) {
         next(error);
     }
@@ -336,12 +410,22 @@ export const joinVault = async (req, res, next) => {
         }
 
         await vault.save();
-        await vault.populate('members.userId', 'name email avatar');
+
+        const vObj = JSON.parse(JSON.stringify(vault));
+        if (vObj.members) {
+            vObj.members = await Promise.all(vObj.members.map(async (m) => {
+                if (m.userId) {
+                    const u = await User.findById(m.userId);
+                    if (u) m.userId = { _id: u._id, name: u.name, email: u.email, avatar: u.avatar };
+                }
+                return m;
+            }));
+        }
 
         res.json({
             success: true,
             message: `Joined "${vault.name}" as ${invite.role}`,
-            data: vault,
+            data: vObj,
         });
     } catch (error) {
         next(error);
@@ -356,11 +440,14 @@ export const getInviteInfo = async (req, res, next) => {
         const vault = await FamilyVault.findOne({
             'invites.code': code,
             'invites.isActive': true,
-        }).populate('createdBy', 'name avatar');
+        });
 
         if (!vault) {
             return res.status(404).json({ success: false, message: 'Invalid invite link' });
         }
+
+        const creator = await User.findById(vault.createdBy);
+        const creatorData = creator ? { _id: creator._id, name: creator.name, avatar: creator.avatar } : vault.createdBy;
 
         const invite = vault.invites.find(
             (i) => i.code === code && i.isActive
@@ -380,7 +467,7 @@ export const getInviteInfo = async (req, res, next) => {
                 color: vault.color,
                 memberCount: vault.members.length,
                 memoryCount: vault.memories.length,
-                createdBy: vault.createdBy,
+                createdBy: creatorData,
                 role: invite.role,
                 expiresAt: invite.expiresAt,
             },
@@ -421,9 +508,19 @@ export const updateMemberRole = async (req, res, next) => {
 
         member.role = role;
         await vault.save();
-        await vault.populate('members.userId', 'name email avatar');
 
-        res.json({ success: true, data: vault });
+        const vObj = JSON.parse(JSON.stringify(vault));
+        if (vObj.members) {
+            vObj.members = await Promise.all(vObj.members.map(async (m) => {
+                if (m.userId) {
+                    const u = await User.findById(m.userId);
+                    if (u) m.userId = { _id: u._id, name: u.name, email: u.email, avatar: u.avatar };
+                }
+                return m;
+            }));
+        }
+
+        res.json({ success: true, data: vObj });
     } catch (error) {
         next(error);
     }
@@ -469,12 +566,7 @@ export const removeMember = async (req, res, next) => {
 // ─── Get Vault Activity Feed ───────────────────────────────────
 export const getActivity = async (req, res, next) => {
     try {
-        const vault = await FamilyVault.findById(req.params.id)
-            .populate('memories.addedBy', 'name avatar')
-            .populate({
-                path: 'memories.memoryId',
-                select: 'title category fileType createdAt',
-            });
+        const vault = await FamilyVault.findById(req.params.id);
 
         if (!vault) {
             return res.status(404).json({ success: false, message: 'Vault not found' });
@@ -483,20 +575,26 @@ export const getActivity = async (req, res, next) => {
             return res.status(403).json({ success: false, message: 'Access denied' });
         }
 
-        // Build activity from memories sorted by addedAt
-        const activity = vault.memories
+        // Build activity from memories manual population
+        const activity = await Promise.all(vault.memories
             .filter((m) => m.memoryId)
-            .map((m) => ({
-                type: 'memory_added',
-                user: m.addedBy,
-                memory: m.memoryId,
-                caption: m.caption,
-                timestamp: m.addedAt,
-            }))
-            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-            .slice(0, 50);
+            .map(async (m) => {
+                const addedBy = await User.findById(m.addedBy);
+                const memory = await Memory.findById(m.memoryId);
 
-        res.json({ success: true, data: activity });
+                return {
+                    type: 'memory_added',
+                    user: addedBy ? { _id: addedBy._id, name: addedBy.name, avatar: addedBy.avatar } : m.addedBy,
+                    memory: memory ? { _id: memory._id, title: memory.title, category: memory.category, fileType: memory.fileType, createdAt: memory.createdAt } : m.memoryId,
+                    caption: m.caption,
+                    timestamp: m.addedAt,
+                };
+            }));
+
+        activity.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        const limitedActivity = activity.slice(0, 50);
+
+        res.json({ success: true, data: limitedActivity });
     } catch (error) {
         next(error);
     }

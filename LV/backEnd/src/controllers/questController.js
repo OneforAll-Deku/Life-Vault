@@ -2,6 +2,7 @@ import Quest from '../models/Quest.js';
 import QuestCompletion from '../models/QuestCompletion.js';
 import Campaign from '../models/Campaign.js';
 import User from '../models/User.js';
+import Badge from '../models/Badge.js';
 import verificationService from '../services/verificationService.js';
 import rewardService from '../services/rewardService.js';
 import ipfsService from '../services/ipfsService.js';
@@ -198,15 +199,57 @@ export const getQuests = async (req, res, next) => {
       distance: null // Handled by $near
     };
 
-    const quests = await Quest.find(query)
-      .populate('creatorId', 'name avatar organizationInfo')
-      .populate('rewards.badgeId', 'name imageUrl rarity')
-      .sort(sortOptions[sortBy] || { createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit))
-      .lean();
+    // Simplified fetching for stateless model (no chaining)
+    const allQuests = await Quest.find(query);
 
-    const total = await Quest.countDocuments(query);
+    // Manual Sort
+    let sortedQuests = [...allQuests];
+    if (sortBy === 'rewards') {
+      sortedQuests.sort((a, b) => (b.rewards?.aptAmount || 0) - (a.rewards?.aptAmount || 0));
+    } else if (sortBy === 'completions') {
+      sortedQuests.sort((a, b) => (b.stats?.totalCompletions || 0) - (a.stats?.totalCompletions || 0));
+    } else {
+      sortedQuests.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    }
+
+    const total = sortedQuests.length;
+
+    // Manual Pagination
+    const skip = (page - 1) * limit;
+    const paginatedQuests = sortedQuests.slice(skip, skip + parseInt(limit));
+
+    // Manual Population
+    const quests = await Promise.all(paginatedQuests.map(async (q) => {
+      const qObj = JSON.parse(JSON.stringify(q));
+
+      // Populate Creator
+      if (qObj.creatorId) {
+        const creator = await User.findById(qObj.creatorId);
+        if (creator) {
+          qObj.creatorId = {
+            _id: creator._id,
+            name: creator.name,
+            avatar: creator.avatar,
+            organizationInfo: creator.organizationInfo
+          };
+        }
+      }
+
+      // Populate Badge
+      if (qObj.rewards?.badgeId) {
+        const badge = await Badge.findById(qObj.rewards.badgeId);
+        if (badge) {
+          qObj.rewards.badgeId = {
+            _id: badge._id,
+            name: badge.name,
+            imageUrl: badge.imageUrl,
+            rarity: badge.rarity
+          };
+        }
+      }
+
+      return qObj;
+    }));
 
     // Add user-specific data if authenticated
     let enrichedQuests = quests;
@@ -215,7 +258,7 @@ export const getQuests = async (req, res, next) => {
         userId: req.user._id,
         questId: { $in: quests.map(q => q._id) },
         status: 'completed'
-      }).select('questId');
+      });
 
       const completedIds = new Set(userCompletions.map(c => c.questId.toString()));
 
@@ -287,10 +330,7 @@ export const getNearbyQuests = async (req, res, next) => {
  */
 export const getQuest = async (req, res, next) => {
   try {
-    const quest = await Quest.findById(req.params.id)
-      .populate('creatorId', 'name avatar organizationInfo')
-      .populate('rewards.badgeId', 'name imageUrl rarity description')
-      .populate('campaignId', 'name shortCode');
+    const quest = await Quest.findById(req.params.id);
 
     if (!quest) {
       return res.status(404).json({
@@ -299,22 +339,53 @@ export const getQuest = async (req, res, next) => {
       });
     }
 
+    const questObj = JSON.parse(JSON.stringify(quest));
+
+    // Manual population
+    if (questObj.creatorId) {
+      const creator = await User.findById(questObj.creatorId);
+      if (creator) {
+        questObj.creatorId = { _id: creator._id, name: creator.name, avatar: creator.avatar, organizationInfo: creator.organizationInfo };
+      }
+    }
+
+    if (questObj.rewards?.badgeId) {
+      const badge = await Badge.findById(questObj.rewards.badgeId);
+      if (badge) {
+        questObj.rewards.badgeId = { _id: badge._id, name: badge.name, imageUrl: badge.imageUrl, rarity: badge.rarity, description: badge.description };
+      }
+    }
+
+    if (questObj.campaignId) {
+      const campaign = await Campaign.findById(questObj.campaignId);
+      if (campaign) {
+        questObj.campaignId = { _id: campaign._id, name: campaign.name, shortCode: campaign.shortCode };
+      }
+    }
+
+    // Use the populated object
+    const finalQuest = questObj;
+
     // Check if user can attempt
     let canAttempt = null;
     let userCompletions = [];
 
     if (req.user) {
+      // Use original 'quest' instance for model methods
       canAttempt = await quest.canUserAttempt(req.user._id);
       userCompletions = await QuestCompletion.find({
         questId: quest._id,
         userId: req.user._id
-      }).sort({ createdAt: -1 }).limit(5);
+      });
+      // Manual sort for userCompletions
+      userCompletions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      userCompletions = userCompletions.slice(0, 5);
     }
 
     res.json({
       success: true,
       data: {
-        quest,
+        quest: questObj,
         canAttempt,
         userCompletions,
         isActive: quest.isActive,
@@ -834,12 +905,27 @@ export const getQuestHistory = async (req, res, next) => {
       query.status = status;
     }
 
-    const completions = await QuestCompletion.find(query)
-      .populate('questId', 'title category coverImage location rewards')
-      .populate('campaignId', 'name')
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit));
+    const allCompletions = await QuestCompletion.find(query);
+
+    // Manual Sort
+    const sortedCompletions = allCompletions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // Manual Pagination
+    const paginatedCompletions = sortedCompletions.slice((page - 1) * limit, page * limit);
+
+    // Manual Population
+    const completions = await Promise.all(paginatedCompletions.map(async (c) => {
+      const cObj = JSON.parse(JSON.stringify(c));
+      if (cObj.questId) {
+        const q = await Quest.findById(cObj.questId);
+        if (q) cObj.questId = { _id: q._id, title: q.title, category: q.category, coverImage: q.coverImage, location: q.location, rewards: q.rewards };
+      }
+      if (cObj.campaignId) {
+        const cam = await Campaign.findById(cObj.campaignId);
+        if (cam) cObj.campaignId = { _id: cam._id, name: cam.name };
+      }
+      return cObj;
+    }));
 
     const total = await QuestCompletion.countDocuments(query);
 

@@ -197,7 +197,7 @@ export const addChapter = async (req, res, next) => {
 
     // Encrypt content if story is encrypted
     if (story.isEncrypted && processedContent.text) {
-      const storyWithKey = await Story.findById(storyId).select('+encryptionKey');
+      const storyWithKey = await Story.findById(storyId);
       processedContent.encryptedData = encryptionService.encrypt(
         processedContent.text,
         storyWithKey.encryptionKey
@@ -557,7 +557,7 @@ export const unlockChapter = async (req, res, next) => {
     const { latitude, longitude, qrCode, password } = req.body;
 
     // Find story
-    const story = await Story.findById(storyId).select('+encryptionKey');
+    const story = await Story.findById(storyId);
     if (!story) {
       return res.status(404).json({
         success: false,
@@ -583,9 +583,7 @@ export const unlockChapter = async (req, res, next) => {
     const chapter = await StoryChapter.findOne({
       storyId,
       chapterNumber: parseInt(chapterNumber)
-    }).select(
-      '+unlockConditions.qrCode.code +unlockConditions.qrCode.codeHash +unlockConditions.password.hash'
-    );
+    });
 
     if (!chapter) {
       return res.status(404).json({

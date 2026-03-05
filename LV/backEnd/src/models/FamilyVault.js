@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { matchesQuery } from '../utils/queryHelper.js';
 
 const DATA_FILE = path.join(process.cwd(), 'data', 'familyvaults.json');
 
@@ -14,6 +15,7 @@ if (!fs.existsSync(DATA_FILE)) {
 
 class FamilyVault {
     constructor(data) {
+        Object.assign(this, data);
         this._id = data._id || `vault_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
         this.name = data.name;
         this.description = data.description || '';
@@ -36,20 +38,36 @@ class FamilyVault {
     }
 
     static async find(query = {}) {
-        const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-        return items.filter(item => {
-            for (let key in query) {
-                if (query[key] !== undefined && item[key] !== query[key]) return false;
-            }
-            return true;
-        }).map(item => new FamilyVault(item));
+        try {
+            if (!fs.existsSync(DATA_FILE)) return [];
+            const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+            return items.filter(item => matchesQuery(item, query)).map(item => new FamilyVault(item));
+        } catch (err) {
+            console.error('Error reading familyvaults.json:', err.message);
+            return [];
+        }
+    }
+
+    static async findOne(query) {
+        const items = await this.find(query);
+        return items.length > 0 ? items[0] : null;
     }
 
     static async findById(id) {
-        const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+        const items = await this.find({});
         const item = items.find(i => i._id === id);
         return item ? new FamilyVault(item) : null;
     }
+
+    toObject() {
+        return { ...this };
+    }
+
+    populate() { return this; }
+    sort() { return this; }
+    limit() { return this; }
+    skip() { return this; }
+    select() { return this; }
 
     async save() {
         const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
@@ -62,7 +80,7 @@ class FamilyVault {
         if (index !== -1) {
             items[index] = { ...this };
         } else {
-            items.push(this);
+            items.push({ ...this });
         }
         fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
         return this;
@@ -79,11 +97,11 @@ class FamilyVault {
     }
 
     isMember(userId) {
-        return this.members.some(m => m.userId.toString() === userId.toString());
+        return this.members.some(m => m.userId?.toString() === userId?.toString());
     }
 
     getMemberRole(userId) {
-        const member = this.members.find(m => m.userId.toString() === userId.toString());
+        const member = this.members.find(m => m.userId?.toString() === userId?.toString());
         return member ? member.role : null;
     }
 
@@ -96,6 +114,73 @@ class FamilyVault {
             viewer: ['view'],
         };
         return permissions[role]?.includes(action) || false;
+    }
+
+    static async findOneAndUpdate(query, update, options = {}) {
+        const item = await this.findOne(query);
+        if (item) {
+            const dataToSet = update.$set || update;
+            Object.assign(item, dataToSet);
+            await item.save();
+            return item;
+        }
+        return null;
+    }
+
+    static async findByIdAndUpdate(id, update) {
+        return this.findOneAndUpdate({ _id: id }, update);
+    }
+
+    static async deleteOne(query) {
+        const item = await this.findOne(query);
+        if (item) {
+            const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+            const filtered = items.filter(i => i._id !== item._id);
+            fs.writeFileSync(DATA_FILE, JSON.stringify(filtered, null, 2));
+            return { deletedCount: 1 };
+        }
+        return { deletedCount: 0 };
+    }
+
+    static async deleteMany(query) {
+        const items = await this.find(query);
+        let deletedCount = 0;
+        for (const item of items) {
+            await this.deleteOne({ _id: item._id });
+            deletedCount++;
+        }
+        return { deletedCount };
+    }
+
+    static async findOneAndDelete(query) {
+        const item = await this.findOne(query);
+        if (item) {
+            await this.deleteOne({ _id: item._id });
+            return item;
+        }
+        return null;
+    }
+
+    static async updateMany(query, update) {
+        const items = await this.find(query);
+        let modifiedCount = 0;
+        const dataToSet = update.$set || update;
+
+        for (const item of items) {
+            Object.assign(item, dataToSet);
+            await item.save();
+            modifiedCount++;
+        }
+        return { modifiedCount };
+    }
+
+    static async countDocuments(query = {}) {
+        const items = await this.find(query);
+        return items.length;
+    }
+
+    async deleteOne() {
+        return FamilyVault.deleteOne({ _id: this._id });
     }
 }
 

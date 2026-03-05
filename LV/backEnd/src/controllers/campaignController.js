@@ -128,13 +128,52 @@ export const getCampaigns = async (req, res, next) => {
       ];
     }
 
-    const campaigns = await Campaign.find(query)
-      .populate('organizationId', 'name avatar organizationInfo')
-      .populate('grandPrize.badgeId', 'name imageUrl rarity')
-      .sort({ isFeatured: -1, createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit))
-      .lean();
+    // Simplified fetching for stateless model
+    const allCampaigns = await Campaign.find(query);
+
+    // Manual Sort
+    let sortedCampaigns = [...allCampaigns];
+    sortedCampaigns.sort((a, b) => {
+      if (a.isFeatured !== b.isFeatured) return b.isFeatured - a.isFeatured;
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+
+    // Manual Pagination
+    const skip = (page - 1) * limit;
+    const paginatedCampaigns = sortedCampaigns.slice(skip, skip + parseInt(limit));
+
+    // Manual Population
+    const campaigns = await Promise.all(paginatedCampaigns.map(async (c) => {
+      const cObj = JSON.parse(JSON.stringify(c));
+
+      // Populate Organization
+      if (cObj.organizationId) {
+        const org = await User.findById(cObj.organizationId);
+        if (org) {
+          cObj.organizationId = {
+            _id: org._id,
+            name: org.name,
+            avatar: org.avatar,
+            organizationInfo: org.organizationInfo
+          };
+        }
+      }
+
+      // Populate Grand Prize Badge
+      if (cObj.grandPrize?.badgeId) {
+        const badge = await Badge.findById(cObj.grandPrize.badgeId);
+        if (badge) {
+          cObj.grandPrize.badgeId = {
+            _id: badge._id,
+            name: badge.name,
+            imageUrl: badge.imageUrl,
+            rarity: badge.rarity
+          };
+        }
+      }
+
+      return cObj;
+    }));
 
     // Enrich with quest counts
     const enrichedCampaigns = await Promise.all(campaigns.map(async (campaign) => {
@@ -180,13 +219,7 @@ export const getCampaigns = async (req, res, next) => {
  */
 export const getCampaign = async (req, res, next) => {
   try {
-    const campaign = await Campaign.findById(req.params.id)
-      .populate('organizationId', 'name avatar organizationInfo')
-      .populate('grandPrize.badgeId', 'name imageUrl rarity description')
-      .populate({
-        path: 'quests.questId',
-        select: 'title description location rewards category difficulty coverImage stats'
-      });
+    const campaign = await Campaign.findById(req.params.id);
 
     if (!campaign) {
       return res.status(404).json({
@@ -194,6 +227,49 @@ export const getCampaign = async (req, res, next) => {
         message: 'Campaign not found'
       });
     }
+
+    const cObj = JSON.parse(JSON.stringify(campaign));
+
+    // Manual population
+    if (cObj.organizationId) {
+      const org = await User.findById(cObj.organizationId);
+      if (org) {
+        cObj.organizationId = { _id: org._id, name: org.name, avatar: org.avatar, organizationInfo: org.organizationInfo };
+      }
+    }
+
+    if (cObj.grandPrize?.badgeId) {
+      const badge = await Badge.findById(cObj.grandPrize.badgeId);
+      if (badge) {
+        cObj.grandPrize.badgeId = { _id: badge._id, name: badge.name, imageUrl: badge.imageUrl, rarity: badge.rarity, description: badge.description };
+      }
+    }
+
+    if (cObj.quests && cObj.quests.length > 0) {
+      cObj.quests = await Promise.all(cObj.quests.map(async (q) => {
+        const quest = await Quest.findById(q.questId);
+        if (quest) {
+          return {
+            ...q,
+            questId: {
+              _id: quest._id,
+              title: quest.title,
+              description: quest.description,
+              location: quest.location,
+              rewards: quest.rewards,
+              category: quest.category,
+              difficulty: quest.difficulty,
+              coverImage: quest.coverImage,
+              stats: quest.stats
+            }
+          };
+        }
+        return q;
+      }));
+    }
+
+    // Use the populated campaign object for response but keep the instance 'campaign' for methods
+    const campaignData = cObj;
 
     // Get user progress if authenticated
     let userProgress = null;
@@ -204,7 +280,7 @@ export const getCampaign = async (req, res, next) => {
     res.json({
       success: true,
       data: {
-        campaign,
+        campaign: cObj,
         userProgress,
         isActive: campaign.isActive
       }
@@ -252,8 +328,8 @@ export const joinCampaign = async (req, res, next) => {
     }
 
     // Check max participants
-    if (campaign.budget.maxParticipants && 
-        campaign.stats.totalParticipants >= campaign.budget.maxParticipants) {
+    if (campaign.budget.maxParticipants &&
+      campaign.stats.totalParticipants >= campaign.budget.maxParticipants) {
       return res.status(400).json({
         success: false,
         message: 'Campaign has reached maximum participants'
@@ -369,11 +445,11 @@ export const getCampaignLeaderboard = async (req, res, next) => {
     const questIds = campaign.quests.map(q => q.questId);
 
     const leaderboard = await QuestCompletion.aggregate([
-      { 
-        $match: { 
+      {
+        $match: {
           questId: { $in: questIds },
           status: 'completed'
-        } 
+        }
       },
       {
         $group: {
@@ -523,9 +599,19 @@ export const activateCampaign = async (req, res, next) => {
  */
 export const getMyCampaigns = async (req, res, next) => {
   try {
-    const campaigns = await Campaign.find({ organizationId: req.user._id })
-      .populate('grandPrize.badgeId', 'name imageUrl')
-      .sort({ createdAt: -1 });
+    const allCampaigns = await Campaign.find({ organizationId: req.user._id });
+
+    // Manual Sort and Pop
+    const campaigns = await Promise.all(allCampaigns
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .map(async (c) => {
+        const cObj = JSON.parse(JSON.stringify(c));
+        if (cObj.grandPrize && cObj.grandPrize.badgeId) {
+          const b = await Badge.findById(cObj.grandPrize.badgeId);
+          if (b) cObj.grandPrize.badgeId = { _id: b._id, name: b.name, imageUrl: b.imageUrl };
+        }
+        return cObj;
+      }));
 
     res.json({
       success: true,
@@ -544,21 +630,32 @@ export const getMyCampaigns = async (req, res, next) => {
  */
 export const getJoinedCampaigns = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user._id)
-      .populate({
-        path: 'campaigns.campaignId',
-        select: 'name description coverImage status stats quests grandPrize'
-      });
+    const user = await User.findById(req.user._id);
+
+    if (!user || !user.campaigns) {
+      return res.json({ success: true, data: [] });
+    }
 
     const campaigns = await Promise.all(user.campaigns.map(async (c) => {
-      const campaign = c.campaignId;
+      const campaignId = c.campaignId;
+      if (!campaignId) return null;
+
+      const campaign = await Campaign.findById(campaignId);
       if (!campaign) return null;
 
-      const campaignDoc = await Campaign.findById(campaign._id);
-      const progress = await campaignDoc.getUserProgress(req.user._id);
+      const progress = await campaign.getUserProgress(req.user._id);
 
       return {
-        campaign,
+        campaign: {
+          _id: campaign._id,
+          name: campaign.name,
+          description: campaign.description,
+          coverImage: campaign.coverImage,
+          status: campaign.status,
+          stats: campaign.stats,
+          quests: campaign.quests,
+          grandPrize: campaign.grandPrize
+        },
         joinedAt: c.joinedAt,
         progress: c.progress,
         completedAt: c.completedAt,
@@ -566,7 +663,8 @@ export const getJoinedCampaigns = async (req, res, next) => {
       };
     }));
 
-    res.json({
+    // Return filtered results
+    return res.json({
       success: true,
       data: campaigns.filter(Boolean)
     });
@@ -587,10 +685,7 @@ export const checkCampaignCompletion = async (req, res, next) => {
     const campaignId = req.params.id;
 
     // Get campaign
-    const campaign = await Campaign.findById(campaignId).populate(
-      'quests.questId',
-      '_id title'
-    );
+    const campaign = await Campaign.findById(campaignId);
 
     if (!campaign) {
       return res.status(404).json({
@@ -599,8 +694,17 @@ export const checkCampaignCompletion = async (req, res, next) => {
       });
     }
 
+    // Manual population of quests for later use
+    const questsWithData = await Promise.all((campaign.quests || []).map(async (q) => {
+      const qData = await Quest.findById(q.questId);
+      return {
+        questId: qData ? { _id: qData._id, title: qData.title } : { _id: q.questId, title: 'Unknown Quest' },
+        completed: false
+      };
+    }));
+
     // If campaign has no quests
-    if (!campaign.quests || campaign.quests.length === 0) {
+    if (questsWithData.length === 0) {
       return res.status(400).json({
         success: false,
         message: 'Campaign has no quests'
@@ -612,21 +716,21 @@ export const checkCampaignCompletion = async (req, res, next) => {
       userId,
       campaignId,
       status: 'completed'
-    }).select('questId');
+    });
 
     const completedQuestIds = new Set(
       completedQuests.map(q => q.questId.toString())
     );
 
     // Check which quests are completed
-    const questProgress = campaign.quests.map(q => ({
+    const questProgress = questsWithData.map(q => ({
       questId: q.questId._id,
       title: q.questId.title,
       completed: completedQuestIds.has(q.questId._id.toString())
     }));
 
     const completedCount = questProgress.filter(q => q.completed).length;
-    const totalQuests = campaign.quests.length;
+    const totalQuests = questsWithData.length;
 
     const isCompleted = completedCount === totalQuests;
 

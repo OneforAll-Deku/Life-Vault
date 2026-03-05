@@ -117,12 +117,30 @@ export const getBadges = async (req, res, next) => {
       ];
     }
 
-    const badges = await Badge.find(query)
-      .populate('creatorId', 'name organizationInfo')
-      .populate('campaignId', 'name')
-      .sort({ rarity: -1, createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit));
+    const allBadges = await Badge.find(query);
+
+    // Manual Sort
+    const badgesData = allBadges.sort((a, b) => {
+      if (b.rarity !== a.rarity) return b.rarity - a.rarity;
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+
+    // Manual Pagination
+    const paginatedBadges = badgesData.slice((page - 1) * limit, page * limit);
+
+    // Manual Population
+    const badges = await Promise.all(paginatedBadges.map(async (badge) => {
+      const bObj = JSON.parse(JSON.stringify(badge));
+      if (bObj.creatorId) {
+        const u = await User.findById(bObj.creatorId);
+        if (u) bObj.creatorId = { _id: u._id, name: u.name, organizationInfo: u.organizationInfo };
+      }
+      if (bObj.campaignId) {
+        const c = await Campaign.findById(bObj.campaignId);
+        if (c) bObj.campaignId = { _id: c._id, name: c.name };
+      }
+      return bObj;
+    }));
 
     const total = await Badge.countDocuments(query);
 
@@ -151,10 +169,7 @@ export const getBadges = async (req, res, next) => {
  */
 export const getBadge = async (req, res, next) => {
   try {
-    const badge = await Badge.findById(req.params.id)
-      .populate('creatorId', 'name avatar organizationInfo')
-      .populate('campaignId', 'name description')
-      .populate('requirements.questId', 'title description');
+    const badge = await Badge.findById(req.params.id);
 
     if (!badge) {
       return res.status(404).json({
@@ -163,23 +178,42 @@ export const getBadge = async (req, res, next) => {
       });
     }
 
-    // Get recent holders
-    const recentHolders = await User.find({
+    const bObj = JSON.parse(JSON.stringify(badge));
+
+    // Manual Population
+    if (bObj.creatorId) {
+      const u = await User.findById(bObj.creatorId);
+      if (u) bObj.creatorId = { _id: u._id, name: u.name, avatar: u.avatar, organizationInfo: u.organizationInfo };
+    }
+    if (bObj.campaignId) {
+      const c = await Campaign.findById(bObj.campaignId);
+      if (c) bObj.campaignId = { _id: c._id, name: c.name, description: c.description };
+    }
+    if (bObj.requirements && bObj.requirements.questId) {
+      const q = await Quest.findById(bObj.requirements.questId);
+      if (q) bObj.requirements.questId = { _id: q._id, title: q.title, description: q.description };
+    }
+
+    // Get recent holders manual
+    const allUsers = await User.find({
       'badges.badgeId': badge._id
-    })
-      .select('name avatar badges')
-      .sort({ 'badges.awardedAt': -1 })
-      .limit(10);
+    });
+
+    const recentHolders = allUsers
+      .map(u => ({
+        name: u.name,
+        avatar: u.avatar,
+        awardedAt: u.badges.find(b => b.badgeId.toString() === badge._id.toString())?.awardedAt
+      }))
+      .filter(u => u.awardedAt)
+      .sort((a, b) => new Date(b.awardedAt) - new Date(a.awardedAt))
+      .slice(0, 10);
 
     res.json({
       success: true,
       data: {
-        badge,
-        recentHolders: recentHolders.map(u => ({
-          name: u.name,
-          avatar: u.avatar,
-          awardedAt: u.badges.find(b => b.badgeId.toString() === badge._id.toString())?.awardedAt
-        }))
+        badge: bObj,
+        recentHolders
       }
     });
 
@@ -195,15 +229,29 @@ export const getBadge = async (req, res, next) => {
  */
 export const getMyBadges = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user._id)
-      .populate({
-        path: 'badges.badgeId',
-        select: 'name description imageUrl rarity category tier pointValue'
-      })
-      .select('badges');
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-    const badges = user.badges.map(b => ({
-      ...b.badgeId?.toObject(),
+    const populatedBadges = await Promise.all((user.badges || []).map(async (b) => {
+      const bData = await Badge.findById(b.badgeId);
+      return {
+        badgeId: bData ? {
+          _id: bData._id,
+          name: bData.name,
+          description: bData.description,
+          imageUrl: bData.imageUrl,
+          rarity: bData.rarity,
+          category: bData.category,
+          tier: bData.tier,
+          pointValue: bData.pointValue
+        } : b.badgeId,
+        awardedAt: b.awardedAt,
+        questCompletionId: b.questCompletionId
+      };
+    }));
+
+    const badges = populatedBadges.map(b => ({
+      ...(typeof b.badgeId === 'object' ? b.badgeId : {}),
       awardedAt: b.awardedAt,
       questCompletionId: b.questCompletionId
     }));
@@ -239,12 +287,7 @@ export const getMyBadges = async (req, res, next) => {
  */
 export const getUserBadges = async (req, res, next) => {
   try {
-    const user = await User.findById(req.params.userId)
-      .populate({
-        path: 'badges.badgeId',
-        select: 'name description imageUrl rarity category tier'
-      })
-      .select('badges preferences name avatar');
+    const user = await User.findById(req.params.userId);
 
     if (!user) {
       return res.status(404).json({
@@ -252,6 +295,27 @@ export const getUserBadges = async (req, res, next) => {
         message: 'User not found'
       });
     }
+
+    const populatedBadges = await Promise.all((user.badges || []).map(async (b) => {
+      const bData = await Badge.findById(b.badgeId);
+      return {
+        badgeId: bData ? {
+          _id: bData._id,
+          name: bData.name,
+          description: bData.description,
+          imageUrl: bData.imageUrl,
+          rarity: bData.rarity,
+          category: bData.category,
+          tier: bData.tier
+        } : b.badgeId,
+        awardedAt: b.awardedAt
+      };
+    }));
+
+    const badges = populatedBadges.map(b => ({
+      ...(typeof b.badgeId === 'object' ? b.badgeId : {}),
+      awardedAt: b.awardedAt
+    }));
 
     // Check privacy settings
     if (!user.preferences?.privacy?.showBadges) {
@@ -268,10 +332,7 @@ export const getUserBadges = async (req, res, next) => {
           name: user.name,
           avatar: user.avatar
         },
-        badges: user.badges.map(b => ({
-          ...b.badgeId?.toObject(),
-          awardedAt: b.awardedAt
-        }))
+        badges: badges
       }
     });
 
@@ -299,7 +360,7 @@ export const awardBadge = async (req, res, next) => {
 
     // Verify ownership or admin
     if (badge.creatorId.toString() !== req.user._id.toString() &&
-        req.user.userType !== 'admin') {
+      req.user.userType !== 'admin') {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to award this badge'
@@ -446,24 +507,22 @@ export const getBadgeLeaderboard = async (req, res, next) => {
   try {
     const { limit = 50 } = req.query;
 
-    const leaderboard = await User.aggregate([
-      {
-        $match: {
-          'badges.0': { $exists: true },
-          'preferences.privacy.showBadges': { $ne: false }
-        }
-      },
-      {
-        $project: {
-          name: 1,
-          avatar: 1,
-          badgeCount: { $size: '$badges' },
-          level: '$level.current'
-        }
-      },
-      { $sort: { badgeCount: -1 } },
-      { $limit: parseInt(limit) }
-    ]);
+    const allUsers = await User.find({});
+
+    const leaderboard = allUsers
+      .filter(u =>
+        u.badges && u.badges.length > 0 &&
+        u.preferences?.privacy?.showBadges !== false
+      )
+      .map(u => ({
+        _id: u._id,
+        name: u.name,
+        avatar: u.avatar,
+        badgeCount: u.badges.length,
+        level: u.level?.current || 1
+      }))
+      .sort((a, b) => b.badgeCount - a.badgeCount)
+      .slice(0, parseInt(limit));
 
     res.json({
       success: true,

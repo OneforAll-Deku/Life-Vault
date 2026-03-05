@@ -51,7 +51,7 @@ class WillNotificationService {
     }
 
     const from = process.env.EMAIL_FROM || process.env.SMTP_USER;
-    const owner = await User.findById(will.userId).select('name email');
+    const owner = await User.findById(will.userId);
     const ownerName = owner?.name || 'A LifeVault user';
     const results = [];
 

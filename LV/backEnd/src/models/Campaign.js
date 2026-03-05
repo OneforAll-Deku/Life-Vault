@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { CAMPAIGN_TYPES, QUEST_STATUS } from '../config/constants.js';
+import { matchesQuery, Query } from '../utils/queryHelper.js';
 
 const DATA_FILE = path.join(process.cwd(), 'data', 'campaigns.json');
 
@@ -15,6 +16,7 @@ if (!fs.existsSync(DATA_FILE)) {
 
 class Campaign {
   constructor(data) {
+    Object.assign(this, data);
     this._id = data._id || `camp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
     this.name = data.name;
     this.description = data.description || '';
@@ -72,25 +74,38 @@ class Campaign {
     this.updatedAt = data.updatedAt || new Date();
   }
 
-  static async find(query = {}) {
-    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    return items.filter(item => {
-      for (let key in query) {
-        if (query[key] !== undefined && item[key] !== query[key]) return false;
-      }
-      return true;
-    }).map(item => new Campaign(item));
+  static find(query = {}) {
+    try {
+      if (!fs.existsSync(DATA_FILE)) return new Query([]);
+      const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+      const results = items.filter(item => matchesQuery(item, query)).map(item => new Campaign(item));
+      return new Query(results);
+    } catch (err) {
+      console.error('Error reading campaigns.json:', err.message);
+      return new Query([]);
+    }
   }
 
+  toObject() {
+    return { ...this };
+  }
+
+  populate() { return this; }
+  sort() { return this; }
+  limit() { return this; }
+  skip() { return this; }
+  select() { return this; }
+
   static async findOne(query) {
-    const items = await this.find(query);
-    return items.length > 0 ? items[0] : null;
+    const q = this.find(query);
+    const results = await q;
+    return results.length > 0 ? results[0] : null;
   }
 
   static async findById(id) {
-    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    const item = items.find(i => i._id === id);
-    return item ? new Campaign(item) : null;
+    const q = this.find({ _id: id });
+    const results = await q;
+    return results.length > 0 ? results[0] : null;
   }
 
   async save() {
@@ -100,7 +115,7 @@ class Campaign {
     if (index !== -1) {
       items[index] = { ...this };
     } else {
-      items.push(this);
+      items.push({ ...this });
     }
     fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
     return this;
@@ -119,8 +134,100 @@ class Campaign {
       (!this.endDate || now <= new Date(this.endDate));
   }
 
+  static async findOneAndUpdate(query, update, options = {}) {
+    const item = await this.findOne(query);
+    if (item) {
+      const dataToSet = update.$set || update;
+      Object.assign(item, dataToSet);
+      await item.save();
+      return item;
+    }
+    return null;
+  }
+
+  static async findByIdAndUpdate(id, update) {
+    return this.findOneAndUpdate({ _id: id }, update);
+  }
+
+  static async deleteOne(query) {
+    const item = await this.findOne(query);
+    if (item) {
+      const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+      const filtered = items.filter(i => i._id !== item._id);
+      fs.writeFileSync(DATA_FILE, JSON.stringify(filtered, null, 2));
+      return { deletedCount: 1 };
+    }
+    return { deletedCount: 0 };
+  }
+
+  static async deleteMany(query) {
+    const q = this.find(query);
+    const items = await q;
+    let deletedCount = 0;
+    for (const item of items) {
+      await this.deleteOne({ _id: item._id });
+      deletedCount++;
+    }
+    return { deletedCount };
+  }
+
+  static async findOneAndDelete(query) {
+    const item = await this.findOne(query);
+    if (item) {
+      await this.deleteOne({ _id: item._id });
+      return item;
+    }
+    return null;
+  }
+
+  static async updateMany(query, update) {
+    const q = this.find(query);
+    const items = await q;
+    let modifiedCount = 0;
+    const dataToSet = update.$set || update;
+
+    for (const item of items) {
+      Object.assign(item, dataToSet);
+      await item.save();
+      modifiedCount++;
+    }
+    return { modifiedCount };
+  }
+
+  static async countDocuments(query = {}) {
+    const q = this.find(query);
+    const items = await q;
+    return items.length;
+  }
+
+  async getUserProgress(userId) {
+    const QuestCompletion = (await import('./QuestCompletion.js')).default;
+    const completedQuests = await QuestCompletion.find({
+      userId,
+      campaignId: this._id,
+      status: 'completed'
+    });
+
+    const completedQuestIds = new Set(completedQuests.map(q => q.questId?.toString()));
+    const campaignQuestIds = (this.quests || []).map(q => q.questId?.toString());
+
+    const completedCount = campaignQuestIds.filter(id => completedQuestIds.has(id)).length;
+    const totalCount = campaignQuestIds.length;
+
+    return {
+      completed: completedCount,
+      total: totalCount,
+      percentage: totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0,
+      isCompleted: totalCount > 0 && completedCount === totalCount
+    };
+  }
+
   get questCount() {
     return this.quests?.length || 0;
+  }
+
+  async deleteOne() {
+    return Campaign.deleteOne({ _id: this._id });
   }
 }
 
