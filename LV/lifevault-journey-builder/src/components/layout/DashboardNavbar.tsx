@@ -8,6 +8,7 @@ import { getInitials } from '@/services/api';
 import { ConnectWalletButton } from '@/components/wallet/ConnectWalletButton';
 import { WalletAuthModal } from '@/components/wallet/WalletAuthModal';
 import { useToast } from '@/hooks/use-toast';
+import { NetworkSelector } from '@/components/dashboard/NetworkSelector';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Vault,
@@ -112,7 +113,7 @@ export const DashboardNavbar: React.FC = () => {
                 </div>
                 <div className="hidden sm:block">
                   <span className="text-xl font-black text-slate-900 tracking-tight">
-                    LifeVault
+                    Block Pix
                   </span>
                 </div>
               </Link>
@@ -187,20 +188,23 @@ export const DashboardNavbar: React.FC = () => {
                 </button>
               </div>
 
-              {/* Wallet / Link Action */}
-              {hasLinkedWallet || connected ? (
-                <div className="hidden md:block">
-                  <ConnectWalletButton variant="ghost" size="sm" />
-                </div>
-              ) : (
-                <button
-                  onClick={() => setShowLinkWalletModal(true)}
-                  className="hidden md:flex items-center gap-2.5 px-6 py-3 text-sm font-bold bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/20 active:scale-95 transition-all"
-                >
-                  <Wallet className="w-4 h-4" />
-                  <span>Connect Wallet</span>
-                </button>
-              )}
+              {/* Network Selector and Wallet / Link Action */}
+              <div className="flex items-center gap-2">
+                <NetworkSelector />
+                {hasLinkedWallet || connected ? (
+                  <div className="hidden md:block">
+                    <ConnectWalletButton variant="ghost" size="sm" />
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowLinkWalletModal(true)}
+                    className="hidden md:flex items-center gap-2.5 px-6 py-3 text-sm font-bold bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/20 active:scale-95 transition-all"
+                  >
+                    <Wallet className="w-4 h-4" />
+                    <span>Connect Wallet</span>
+                  </button>
+                )}
+              </div>
 
               {/* User Avatar */}
               <div className="hidden md:block relative group/user">

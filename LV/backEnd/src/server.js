@@ -5,7 +5,7 @@ dotenv.config();
 
 import app from './app.js';
 import aptosService from './services/aptosService.js';
-import { connectPinecone } from './config/pinecone.js';
+import supabaseService from './services/supabaseService.js';
 // import { seedDemoBusinessUser } from './utils/seedDemoBusinessUser.js';
 
 const PORT = process.env.PORT || 5000;
@@ -19,7 +19,7 @@ let server;
  */
 const initializeServices = async () => {
   try {
-    console.log('\n🚀 Starting Life Vault Backend...\n');
+    console.log('\n🚀 Starting Block Pix Backend...\n');
 
     /* 
     // Seed demo business account (dev convenience)
@@ -35,16 +35,18 @@ const initializeServices = async () => {
     await aptosService.initialize();
     console.log('✅ Aptos service initialized\n');
 
-    // 2b. Initialize Pinecone
-    console.log('🌲 Initializing Pinecone...');
-    await connectPinecone();
+    // 2b. Initialize Supabase
+    console.log('⚡ Initializing Supabase...');
+    // Supabase client is already initialized in supabaseService.js
+    console.log('✅ Supabase service initialized\n');
 
     // 3. Verify critical environment variables
     console.log('🔍 Verifying environment variables...');
     const requiredEnvVars = [
       'JWT_SECRET',
       'APTOS_NETWORK',
-      'PINECONE_API_KEY'
+      'SUPABASE_URL',
+      'SUPABASE_ANON_KEY'
     ];
 
     const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
@@ -81,11 +83,11 @@ const initializeServices = async () => {
 const startServer = () => {
   server = app.listen(PORT, () => {
     console.log('\n' + '='.repeat(60));
-    console.log('🔐 Life Vault Backend Successfully Started!');
+    console.log('🔐 Block Pix Backend Successfully Started!');
     console.log('='.repeat(60));
     console.log(`📡 Port:           ${PORT}`);
     console.log(`🌍 Environment:    ${NODE_ENV}`);
-    console.log(`🗄️  Database:       Pinecone Vector DB`);
+    console.log(`🗄️  Database:       Supabase (Postgres + Vector)`);
     console.log(`🌐 IPFS:           Pinata`);
     console.log(`⛓️  Blockchain:     Aptos ${process.env.APTOS_NETWORK || 'testnet'}`);
     console.log(`🔗 API URL:        http://localhost:${PORT}`);

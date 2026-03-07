@@ -330,8 +330,11 @@ const Dashboard: React.FC = () => {
             <div className="flex flex-col sm:flex-row items-center gap-4">
               <form onSubmit={handleSearch} className="flex items-center gap-2 w-full sm:w-auto">
                 <div className="relative group flex-1 sm:w-72">
+                  <label htmlFor="search-timeline" className="sr-only">Search</label>
                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
                   <input
+                    id="search-timeline"
+                    name="search-timeline"
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
@@ -380,8 +383,7 @@ const Dashboard: React.FC = () => {
           />
         </div>
 
-        {/* Modals */}
-        <AddMemoryModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} onSubmit={createMemory} />
+        <AddMemoryModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} onSubmit={createMemory} onSuccess={refresh} />
         <CreateStoryModal isOpen={showStoryModal} onClose={() => setShowStoryModal(false)} onCreated={fetchStories} />
         <MemoryDetailModal isOpen={!!selectedMemory} onClose={() => setSelectedMemory(null)} memory={selectedMemory} onDelete={deleteMemory} onVerify={verifyMemory} />
       </div>

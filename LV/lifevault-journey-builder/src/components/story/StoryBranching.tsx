@@ -67,6 +67,9 @@ export const StoryBranching: React.FC<StoryBranchingProps> = ({
                     {choices.map((choice, idx) => (
                         <div key={idx} className="flex flex-col gap-2 p-3 bg-white rounded-xl border border-black/5 shadow-sm">
                             <input
+                                id={`branch-option-${idx}`}
+                                name={`branch-option-${idx}`}
+                                aria-label="Branch Option Text"
                                 placeholder="Option text (e.g., 'Go left')"
                                 className="w-full text-sm font-medium border-none focus:ring-0 p-0"
                                 value={choice.text}
@@ -75,6 +78,9 @@ export const StoryBranching: React.FC<StoryBranchingProps> = ({
                             <div className="flex items-center gap-2 mt-1">
                                 <ArrowRight className="w-3 h-3 text-black/40" />
                                 <select
+                                    id={`branch-target-${idx}`}
+                                    name={`branch-target-${idx}`}
+                                    aria-label="Target Chapter"
                                     className="flex-1 text-xs border-none bg-gray-50 rounded-lg focus:ring-0"
                                     value={choice.nextChapterId}
                                     onChange={(e) => updateChoice(idx, 'nextChapterId', e.target.value)}

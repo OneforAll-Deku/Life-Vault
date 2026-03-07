@@ -21,7 +21,8 @@ import {
   Clock,
   Lock,
   Unlock,
-  User
+  User,
+  Globe
 } from 'lucide-react';
 
 interface MemoryDetailModalProps {
@@ -185,6 +186,19 @@ export const MemoryDetailModal: React.FC<MemoryDetailModalProps> = ({
                   <HardDrive className="w-4 h-4" />
                   {formatFileSize(memory.fileSize || 0)}
                 </p>
+              </div>
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <p className="text-xs text-black/40 uppercase mb-1">Network</p>
+                <div className="font-medium">
+                  {memory.network ? (
+                    <span className={`flex items-center gap-1.5 ${memory.network === 'mainnet' ? 'text-emerald-600' : memory.network === 'testnet' ? 'text-amber-600' : 'text-indigo-600'}`}>
+                      <Globe className="w-4 h-4" />
+                      {memory.network.charAt(0).toUpperCase() + memory.network.slice(1)}
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">Not Specified</span>
+                  )}
+                </div>
               </div>
               <div className="p-4 bg-gray-50 rounded-lg">
                 <p className="text-xs text-black/40 uppercase mb-1">Status</p>

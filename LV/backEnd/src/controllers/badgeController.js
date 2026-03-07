@@ -2,6 +2,8 @@
 
 import Badge from '../models/Badge.js';
 import User from '../models/User.js';
+import Campaign from '../models/Campaign.js';
+import Quest from '../models/Quest.js';
 import ipfsService from '../services/ipfsService.js';
 import { BADGE_RARITY } from '../config/constants.js';
 

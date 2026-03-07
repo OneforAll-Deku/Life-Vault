@@ -261,6 +261,8 @@ export const willAPI = {
   checkin: (willId: string) => api.post(`/wills/${willId}/checkin`),
   notarize: (willId: string) => api.post(`/wills/${willId}/notarize`),
   execute: (willId: string) => api.post(`/wills/${willId}/execute`),
+  verifyBeneficiary: (willId: string, beneficiaryId: string) =>
+    api.post(`/wills/${willId}/beneficiaries/${beneficiaryId}/verify`),
   getActivity: (willId: string) => api.get(`/wills/${willId}/activity`),
 };
 

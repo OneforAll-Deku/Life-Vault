@@ -447,6 +447,7 @@ router.post('/wallet', async (req, res, next) => {
         user = new User({
           bitcoinAddress: address,
           email: `${address.slice(0, 12)}@bitcoin.blockpix.app`,
+          password: `wallet_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
           isWalletUser: true,
           network: 'bitcoin-testnet4'
         });
@@ -460,6 +461,7 @@ router.post('/wallet', async (req, res, next) => {
           aptosAddress: address,
           aptosPublicKey: publicKey,
           email: `${address.slice(0, 16)}@wallet.blockpix.app`,
+          password: `wallet_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
           isWalletUser: true
         });
         await user.save();

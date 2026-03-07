@@ -51,6 +51,7 @@ export interface Memory {
   ipfsUrl?: string;
   txHash?: string;
   txVersion?: string;
+  network?: string;
   isOnChain: boolean;
   fileType?: string;
   fileSize?: number;
@@ -108,6 +109,7 @@ export interface CreateMemoryData {
   fileName: string;
   fileType: string;
   storeOnChain: boolean;
+  network?: string;
   isCapsule?: boolean;
   beneficiaryAddress?: string;
   releaseTimestamp?: number;

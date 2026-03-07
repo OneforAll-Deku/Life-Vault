@@ -234,8 +234,10 @@ const InviteModal: React.FC<{
                     {/* Settings Row */}
                     <div className="grid grid-cols-2 gap-3">
                         <div>
-                            <label className="text-xs font-semibold text-gray-500 block mb-2">Max Uses</label>
+                            <label htmlFor="max-uses" className="text-xs font-semibold text-gray-500 block mb-2">Max Uses</label>
                             <select
+                                id="max-uses"
+                                name="max-uses"
                                 value={maxUses}
                                 onChange={(e) => setMaxUses(Number(e.target.value))}
                                 className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all"
@@ -248,8 +250,10 @@ const InviteModal: React.FC<{
                             </select>
                         </div>
                         <div>
-                            <label className="text-xs font-semibold text-gray-500 block mb-2">Expires In</label>
+                            <label htmlFor="expires-in" className="text-xs font-semibold text-gray-500 block mb-2">Expires In</label>
                             <select
+                                id="expires-in"
+                                name="expires-in"
                                 value={expiresInDays}
                                 onChange={(e) => setExpiresInDays(Number(e.target.value))}
                                 className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all"
@@ -280,6 +284,9 @@ const InviteModal: React.FC<{
                             </div>
                             <div className="flex items-center gap-2">
                                 <input
+                                    id="invite-url"
+                                    name="invite-url"
+                                    aria-label="Invite Link"
                                     type="text"
                                     readOnly
                                     value={inviteUrl}
@@ -467,6 +474,9 @@ const AddMemoryModal: React.FC<{
                             <div className="relative">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                                 <input
+                                    id="memory-search"
+                                    name="memory-search"
+                                    aria-label="Search your memories"
                                     type="text"
                                     value={searchQ}
                                     onChange={(e) => setSearchQ(e.target.value)}
@@ -515,6 +525,9 @@ const AddMemoryModal: React.FC<{
                                 className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${newFile ? 'border-indigo-400 bg-indigo-50' : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50'}`}
                             >
                                 <input
+                                    id="vault-memory-upload"
+                                    name="vault-memory-upload"
+                                    aria-label="Upload memory to vault"
                                     ref={fileInputRef}
                                     type="file"
                                     className="hidden"
@@ -549,8 +562,10 @@ const AddMemoryModal: React.FC<{
 
                             <div className="grid grid-cols-1 gap-3">
                                 <div>
-                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5 ml-1">Title</label>
+                                    <label htmlFor="memory-title" className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5 ml-1">Title</label>
                                     <input
+                                        id="memory-title"
+                                        name="memory-title"
                                         type="text"
                                         value={title}
                                         onChange={(e) => setTitle(e.target.value)}
@@ -559,8 +574,10 @@ const AddMemoryModal: React.FC<{
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5 ml-1">Category</label>
+                                    <label htmlFor="memory-category" className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5 ml-1">Category</label>
                                     <select
+                                        id="memory-category"
+                                        name="memory-category"
                                         value={category}
                                         onChange={(e) => setCategory(e.target.value)}
                                         className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all bg-white font-medium"
@@ -579,8 +596,10 @@ const AddMemoryModal: React.FC<{
                     {/* Caption (Shared) */}
                     {(selectedId || newFile) && (
                         <div className="pt-2 animate-in fade-in duration-300">
-                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5 ml-1">Caption (optional)</label>
+                            <label htmlFor="memory-caption" className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5 ml-1">Caption (optional)</label>
                             <input
+                                id="memory-caption"
+                                name="memory-caption"
                                 type="text"
                                 value={caption}
                                 onChange={(e) => setCaption(e.target.value)}
@@ -1285,8 +1304,10 @@ const VaultSettingsForm: React.FC<{ vault: any; vaultColor: string; onUpdated: (
     return (
         <div className="space-y-4">
             <div>
-                <label className="text-xs font-semibold text-gray-500 block mb-2">Vault Name</label>
+                <label htmlFor="edit-vault-name" className="text-xs font-semibold text-gray-500 block mb-2">Vault Name</label>
                 <input
+                    id="edit-vault-name"
+                    name="edit-vault-name"
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
@@ -1294,8 +1315,10 @@ const VaultSettingsForm: React.FC<{ vault: any; vaultColor: string; onUpdated: (
                 />
             </div>
             <div>
-                <label className="text-xs font-semibold text-gray-500 block mb-2">Description</label>
+                <label htmlFor="edit-vault-description" className="text-xs font-semibold text-gray-500 block mb-2">Description</label>
                 <textarea
+                    id="edit-vault-description"
+                    name="edit-vault-description"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     rows={3}

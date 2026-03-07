@@ -473,10 +473,12 @@ const BusinessDashboard: React.FC = () => {
               {/* Basic Info Section */}
               <div className="space-y-5 mb-6">
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                  <label htmlFor="quest-title" className="block text-sm font-bold text-gray-700 mb-2">
                     Quest Title <span className="text-red-500">*</span>
                   </label>
                   <input
+                    id="quest-title"
+                    name="quest-title"
                     type="text"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
@@ -486,10 +488,12 @@ const BusinessDashboard: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                  <label htmlFor="quest-description" className="block text-sm font-bold text-gray-700 mb-2">
                     Description <span className="text-red-500">*</span>
                   </label>
                   <textarea
+                    id="quest-description"
+                    name="quest-description"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Explain what users must do at your location (e.g. take a selfie with the main gate, capture your coffee cup with the logo, etc.)"
@@ -510,10 +514,12 @@ const BusinessDashboard: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                   <div>
-                    <label className="block text-xs font-semibold text-blue-700 mb-1.5">
+                    <label htmlFor="quest-place-name" className="block text-xs font-semibold text-blue-700 mb-1.5">
                       Place / Business Name
                     </label>
                     <input
+                      id="quest-place-name"
+                      name="quest-place-name"
                       type="text"
                       value={placeName}
                       onChange={(e) => setPlaceName(e.target.value)}
@@ -522,10 +528,12 @@ const BusinessDashboard: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-blue-700 mb-1.5">
+                    <label htmlFor="quest-radius" className="block text-xs font-semibold text-blue-700 mb-1.5">
                       Radius (meters)
                     </label>
                     <input
+                      id="quest-radius"
+                      name="quest-radius"
                       type="number"
                       min={10}
                       max={5000}
@@ -537,10 +545,12 @@ const BusinessDashboard: React.FC = () => {
                 </div>
 
                 <div className="mb-4">
-                  <label className="block text-xs font-semibold text-blue-700 mb-1.5">
+                  <label htmlFor="quest-address" className="block text-xs font-semibold text-blue-700 mb-1.5">
                     Address (optional)
                   </label>
                   <input
+                    id="quest-address"
+                    name="quest-address"
                     type="text"
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
@@ -551,10 +561,12 @@ const BusinessDashboard: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-blue-700 mb-1.5">
+                    <label htmlFor="quest-latitude" className="block text-xs font-semibold text-blue-700 mb-1.5">
                       Latitude
                     </label>
                     <input
+                      id="quest-latitude"
+                      name="quest-latitude"
                       type="number"
                       step="0.000001"
                       value={latitude}
@@ -564,10 +576,12 @@ const BusinessDashboard: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-blue-700 mb-1.5">
+                    <label htmlFor="quest-longitude" className="block text-xs font-semibold text-blue-700 mb-1.5">
                       Longitude
                     </label>
                     <input
+                      id="quest-longitude"
+                      name="quest-longitude"
                       type="number"
                       step="0.000001"
                       value={longitude}
@@ -593,8 +607,10 @@ const BusinessDashboard: React.FC = () => {
               {/* Category & Difficulty */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">Category</label>
+                  <label htmlFor="quest-category" className="block text-sm font-bold text-gray-700 mb-2">Category</label>
                   <select
+                    id="quest-category"
+                    name="quest-category"
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
                     className="w-full h-12 px-4 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500 focus:bg-white transition-all appearance-none cursor-pointer"
@@ -611,8 +627,10 @@ const BusinessDashboard: React.FC = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">Difficulty</label>
+                  <label htmlFor="quest-difficulty" className="block text-sm font-bold text-gray-700 mb-2">Difficulty</label>
                   <select
+                    id="quest-difficulty"
+                    name="quest-difficulty"
                     value={difficulty}
                     onChange={(e) => setDifficulty(e.target.value)}
                     className="w-full h-12 px-4 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500 focus:bg-white transition-all appearance-none cursor-pointer"
@@ -636,10 +654,12 @@ const BusinessDashboard: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-amber-700 mb-1.5">
+                    <label htmlFor="quest-apt-reward" className="block text-xs font-semibold text-amber-700 mb-1.5">
                       APT per completion
                     </label>
                     <input
+                      id="quest-apt-reward"
+                      name="quest-apt-reward"
                       type="number"
                       min={0}
                       step="0.1"
@@ -649,10 +669,12 @@ const BusinessDashboard: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-amber-700 mb-1.5">
+                    <label htmlFor="quest-points-reward" className="block text-xs font-semibold text-amber-700 mb-1.5">
                       Points per completion
                     </label>
                     <input
+                      id="quest-points-reward"
+                      name="quest-points-reward"
                       type="number"
                       min={0}
                       value={pointsReward}
@@ -661,10 +683,12 @@ const BusinessDashboard: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-amber-700 mb-1.5">
+                    <label htmlFor="quest-max-completions" className="block text-xs font-semibold text-amber-700 mb-1.5">
                       Max completions
                     </label>
                     <input
+                      id="quest-max-completions"
+                      name="quest-max-completions"
                       type="number"
                       min={0}
                       value={maxCompletions}
@@ -688,8 +712,10 @@ const BusinessDashboard: React.FC = () => {
                     </div>
                     <h3 className="font-bold text-violet-900">AI Photo Verification</h3>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
+                  <label htmlFor="quest-ai-enabled" className="relative inline-flex items-center cursor-pointer">
                     <input
+                      id="quest-ai-enabled"
+                      name="quest-ai-enabled"
                       type="checkbox"
                       checked={aiEnabled}
                       onChange={(e) => setAiEnabled(e.target.checked)}
@@ -702,10 +728,12 @@ const BusinessDashboard: React.FC = () => {
                 {aiEnabled && (
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-xs font-semibold text-violet-700 mb-1.5">
+                      <label htmlFor="quest-ai-prompt" className="block text-xs font-semibold text-violet-700 mb-1.5">
                         AI Prompt
                       </label>
                       <textarea
+                        id="quest-ai-prompt"
+                        name="quest-ai-prompt"
                         value={aiPrompt}
                         onChange={(e) => setAiPrompt(e.target.value)}
                         rows={2}
@@ -713,10 +741,12 @@ const BusinessDashboard: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-violet-700 mb-1.5">
+                      <label htmlFor="quest-ai-required-objects" className="block text-xs font-semibold text-violet-700 mb-1.5">
                         Required Objects (comma separated)
                       </label>
                       <input
+                        id="quest-ai-required-objects"
+                        name="quest-ai-required-objects"
                         type="text"
                         value={aiRequiredObjects}
                         onChange={(e) => setAiRequiredObjects(e.target.value)}

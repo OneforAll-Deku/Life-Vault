@@ -192,6 +192,9 @@ const Campaigns: React.FC = () => {
                     <div className="relative w-full md:max-w-xs">
                         <Filter className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <input
+                            id="campaign-filter"
+                            name="campaign-filter"
+                            aria-label="Filter campaigns"
                             type="text"
                             value={filterText}
                             onChange={(e) => setFilterText(e.target.value)}

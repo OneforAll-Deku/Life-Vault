@@ -59,10 +59,12 @@ const BusinessLogin: React.FC = () => {
 
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
-            <label className="block text-xs font-semibold text-black/60 mb-1">Email</label>
+            <label htmlFor="business-email" className="block text-xs font-semibold text-black/60 mb-1">Email</label>
             <div className="relative">
               <Mail className="w-4 h-4 text-black/30 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
+                id="business-email"
+                name="business-email"
                 className="w-full pl-10 pr-3 py-2.5 rounded-xl border border-black/10 focus:outline-none focus:ring-2 focus:ring-black/20"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -71,10 +73,12 @@ const BusinessLogin: React.FC = () => {
             </div>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-black/60 mb-1">Password</label>
+            <label htmlFor="business-password" className="block text-xs font-semibold text-black/60 mb-1">Password</label>
             <div className="relative">
               <Lock className="w-4 h-4 text-black/30 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
+                id="business-password"
+                name="business-password"
                 type="password"
                 className="w-full pl-10 pr-3 py-2.5 rounded-xl border border-black/10 focus:outline-none focus:ring-2 focus:ring-black/20"
                 value={password}

@@ -36,6 +36,9 @@ export function CTASection() {
           {/* Email Form */}
           <div className="mt-10 flex flex-col sm:flex-row gap-4 max-w-lg mx-auto">
             <input
+              id="cta-email"
+              name="cta-email"
+              aria-label="Email address"
               type="email"
               placeholder="Enter your email"
               className="input-glass flex-1 text-center sm:text-left"

@@ -166,8 +166,10 @@ const CreateVaultModal: React.FC<{
 
                     <div className="space-y-6">
                         <div>
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3 ml-1">Vault Designation</label>
+                            <label htmlFor="vault-name" className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3 ml-1">Vault Designation</label>
                             <input
+                                id="vault-name"
+                                name="vault-name"
                                 type="text"
                                 value={name}
                                 onChange={(e) => { setName(e.target.value); setError(''); }}
@@ -176,8 +178,10 @@ const CreateVaultModal: React.FC<{
                             />
                         </div>
                         <div>
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3 ml-1">Legacy Mission</label>
+                            <label htmlFor="vault-description" className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3 ml-1">Legacy Mission</label>
                             <textarea
+                                id="vault-description"
+                                name="vault-description"
                                 value={description}
                                 onChange={(e) => setDescription(e.target.value)}
                                 placeholder="Define the shared purpose of this vault..."
@@ -423,6 +427,9 @@ const FamilyVaults: React.FC = () => {
                         <div className="relative group w-full md:max-w-xl">
                             <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-indigo-500 transition-colors pointer-events-none" />
                             <input
+                                id="vault-search"
+                                name="vault-search"
+                                aria-label="Search collective frequencies"
                                 type="text"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}

@@ -32,11 +32,42 @@ function hexToUint8Array(hexString) {
 
 class AptosService {
   constructor() {
-    this.aptos = null;
+    this.clients = {}; // Map of network name to Aptos client
     this.masterAccount = null;
-    this.moduleAddress = null;
-    this.moduleName = null;
     this.initialized = false;
+    this.moduleAddresses = {
+      mainnet: process.env.MAINNET_MODULE_ADDRESS,
+      testnet: process.env.TESTNET_MODULE_ADDRESS,
+      devnet: process.env.APTOS_MODULE_ADDRESS
+    };
+    this.moduleName = process.env.APTOS_MODULE_NAME || 'memory_vault';
+  }
+
+  /**
+   * Get or create Aptos client for a specific network
+   */
+  getAptos(networkName = 'devnet') {
+    const name = networkName.toLowerCase();
+    if (this.clients[name]) return this.clients[name];
+
+    let network;
+    switch (name) {
+      case 'mainnet': network = Network.MAINNET; break;
+      case 'testnet': network = Network.TESTNET; break;
+      default: network = Network.DEVNET;
+    }
+
+    const config = new AptosConfig({ network });
+    this.clients[name] = new Aptos(config);
+    return this.clients[name];
+  }
+
+  /**
+   * Get module address for a specific network
+   */
+  getModuleAddress(networkName = 'devnet') {
+    const name = networkName.toLowerCase();
+    return this.moduleAddresses[name] || this.moduleAddresses.devnet;
   }
 
   /**
@@ -60,9 +91,8 @@ class AptosService {
 
       console.log(`🌐 Connecting to Aptos ${networkName}...`);
 
-      // Create Aptos client
-      const config = new AptosConfig({ network });
-      this.aptos = new Aptos(config);
+      // Create default Aptos client
+      this.getAptos(networkName);
 
       // Load master wallet from private key
       if (process.env.APTOS_PRIVATE_KEY) {
@@ -124,29 +154,23 @@ class AptosService {
 
       // Test the connection
       try {
-        const ledgerInfo = await this.aptos.getLedgerInfo();
+        const aptos = this.getAptos(networkName);
+        const ledgerInfo = await aptos.getLedgerInfo();
         console.log(`📊 Chain ID: ${ledgerInfo.chain_id}`);
         console.log(`🕐 Ledger Version: ${ledgerInfo.ledger_version}`);
       } catch (error) {
         console.warn('⚠️ Could not fetch ledger info:', error.message);
       }
 
+      // Warm up devnet client by default
+      this.getAptos('devnet');
+
       this.initialized = true;
-      console.log(`✅ Connected to Aptos ${networkName}`);
+      console.log(`✅ Aptos service initialized`);
       return true;
     } catch (error) {
       console.error('❌ Aptos initialization failed:', error.message);
-      console.error('Stack trace:', error.stack);
-
-      // Create a minimal setup for development
-      console.log('🛠️ Setting up minimal Aptos client for development...');
-
-      const config = new AptosConfig({ network: Network.DEVNET });
-      this.aptos = new Aptos(config);
-      this.masterAccount = Account.generate();
-      this.initialized = true;
-
-      console.log(`✅ Using development account: ${this.masterAccount.accountAddress.toString()}`);
+      this.initialized = true; // Still mark as initialized to allow client generation
       return true;
     }
   }
@@ -169,9 +193,10 @@ class AptosService {
    * Get account balance
    * @param {string} address - Aptos address
    */
-  async getBalance(address) {
+  async getBalance(address, networkName = 'devnet') {
     try {
-      const balance = await this.aptos.getAccountAPTAmount({
+      const aptos = this.getAptos(networkName);
+      const balance = await aptos.getAccountAPTAmount({
         accountAddress: address
       });
 
@@ -196,9 +221,8 @@ class AptosService {
    * Fund account from faucet (testnet/devnet only)
    * @param {string} address - Aptos address to fund
    */
-  async fundAccount(address) {
+  async fundAccount(address, networkName = 'devnet') {
     try {
-      const networkName = process.env.APTOS_NETWORK || 'devnet';
       if (networkName === 'mainnet') {
         return {
           success: false,
@@ -206,9 +230,10 @@ class AptosService {
         };
       }
 
-      console.log(`💸 Funding account: ${address}`);
+      console.log(`💸 Funding account: ${address} on ${networkName}`);
 
-      await this.aptos.fundAccount({
+      const aptos = this.getAptos(networkName);
+      await aptos.fundAccount({
         accountAddress: address,
         amount: 100_000_000 // 1 APT
       });
@@ -232,17 +257,22 @@ class AptosService {
   /**
    * Store memory hash on Aptos blockchain
    */
-  async storeMemoryOnChain(ipfsHash, userAddress = null) {
+  async storeMemoryOnChain(ipfsHash, networkName = 'devnet') {
     try {
-      if (!this.initialized) {
-        await this.initialize();
+      if (!this.initialized) await this.initialize();
+
+      const aptos = this.getAptos(networkName);
+      const moduleAddress = this.getModuleAddress(networkName);
+
+      if (!moduleAddress) {
+        throw new Error(`Module address not configured for ${networkName}`);
       }
 
-      console.log(`📝 Preparing blockchain transaction for IPFS: ${ipfsHash}`);
+      console.log(`📝 Preparing blockchain transaction for IPFS: ${ipfsHash} on ${networkName}`);
 
-      const functionPayload = `${this.moduleAddress}::${this.moduleName}::store_memory`;
+      const functionPayload = `${moduleAddress}::${this.moduleName}::store_memory`;
 
-      const transaction = await this.aptos.transaction.build.simple({
+      const transaction = await aptos.transaction.build.simple({
         sender: this.masterAccount.accountAddress,
         data: {
           function: functionPayload,
@@ -252,19 +282,19 @@ class AptosService {
 
       console.log('🔑 Signing and submitting transaction...');
 
-      const senderAuthenticator = this.aptos.transaction.sign({
+      const senderAuthenticator = aptos.transaction.sign({
         signer: this.masterAccount,
         transaction,
       });
 
-      const pendingTx = await this.aptos.transaction.submit.simple({
+      const pendingTx = await aptos.transaction.submit.simple({
         transaction,
         senderAuthenticator,
       });
 
       console.log(`📡 Transaction submitted. Hash: ${pendingTx.hash}`);
 
-      const executedTx = await this.aptos.waitForTransaction({
+      const executedTx = await aptos.waitForTransaction({
         transactionHash: pendingTx.hash,
       });
 
@@ -298,20 +328,20 @@ class AptosService {
    *   2. Submit: build + sign + send tx from masterAccount
    *   3. Return tx receipt
    *
-   * @param {string} ipfsHash      - The IPFS CID the user signed
-   * @param {string} userPublicKey - User's Ed25519 public key (hex, with or without 0x)
    * @param {string} signature     - User's Ed25519 detached signature (hex, with or without 0x)
+   * @param {string} networkName   - The target network
    * @returns {Object} { success, txHash, txVersion, ipfsHash }
    */
-  async submitSponsoredMemory(ipfsHash, userPublicKey, signature) {
+  async submitSponsoredMemory(ipfsHash, userPublicKey, signature, networkName = 'devnet') {
     // ── 0. Ensure the service is ready ──────────────────────────
-    if (!this.initialized) {
-      await this.initialize();
-    }
+    if (!this.initialized) await this.initialize();
 
-    if (!this.moduleAddress) {
+    const aptos = this.getAptos(networkName);
+    const moduleAddress = this.getModuleAddress(networkName);
+
+    if (!moduleAddress) {
       throw new Error(
-        'APTOS_MODULE_ADDRESS is not configured. Cannot submit on-chain transaction.'
+        `Module address not configured for ${networkName}. Cannot submit on-chain transaction.`
       );
     }
 
@@ -358,9 +388,9 @@ class AptosService {
     try {
       console.log('⛓️  Building sponsored transaction...');
 
-      const functionPayload = `${this.moduleAddress}::${this.moduleName}::store_memory`;
+      const functionPayload = `${moduleAddress}::${this.moduleName}::store_memory`;
 
-      const transaction = await this.aptos.transaction.build.simple({
+      const transaction = await aptos.transaction.build.simple({
         sender: this.masterAccount.accountAddress,
         data: {
           function: functionPayload,
@@ -370,12 +400,12 @@ class AptosService {
 
       console.log('🔑 Signing with master account (gas sponsor)...');
 
-      const senderAuthenticator = this.aptos.transaction.sign({
+      const senderAuthenticator = aptos.transaction.sign({
         signer: this.masterAccount,
         transaction,
       });
 
-      const pendingTx = await this.aptos.transaction.submit.simple({
+      const pendingTx = await aptos.transaction.submit.simple({
         transaction,
         senderAuthenticator,
       });
@@ -383,7 +413,7 @@ class AptosService {
       console.log(`📡 Sponsored tx submitted. Hash: ${pendingTx.hash}`);
 
       // Wait for finality
-      const executedTx = await this.aptos.waitForTransaction({
+      const executedTx = await aptos.waitForTransaction({
         transactionHash: pendingTx.hash,
       });
 
@@ -407,31 +437,38 @@ class AptosService {
   /**
    * Create a time-locked capsule on Aptos blockchain
    */
-  async createCapsuleOnChain(ipfsHash, beneficiary, releaseTimestamp) {
+  async createCapsuleOnChain(ipfsHash, beneficiary, releaseTimestamp, networkName = 'devnet') {
     try {
       if (!this.initialized) await this.initialize();
 
-      console.log(`⏳ Creating capsule: IPFS=${ipfsHash}, Beneficiary=${beneficiary}, Unlock=${new Date(releaseTimestamp * 1000).toLocaleString()}`);
+      const aptos = this.getAptos(networkName);
+      const moduleAddress = this.getModuleAddress(networkName);
 
-      const transaction = await this.aptos.transaction.build.simple({
+      if (!moduleAddress) {
+        throw new Error(`Module address not configured for ${networkName}`);
+      }
+
+      console.log(`⏳ Creating capsule: IPFS=${ipfsHash}, Beneficiary=${beneficiary}, Unlock=${new Date(releaseTimestamp * 1000).toLocaleString()} on ${networkName}`);
+
+      const transaction = await aptos.transaction.build.simple({
         sender: this.masterAccount.accountAddress,
         data: {
-          function: `${this.moduleAddress}::${this.moduleName}::create_capsule`,
+          function: `${moduleAddress}::${this.moduleName}::create_capsule`,
           functionArguments: [ipfsHash, beneficiary, releaseTimestamp],
         },
       });
 
-      const senderAuthenticator = this.aptos.transaction.sign({
+      const senderAuthenticator = aptos.transaction.sign({
         signer: this.masterAccount,
         transaction,
       });
 
-      const pendingTx = await this.aptos.transaction.submit.simple({
+      const pendingTx = await aptos.transaction.submit.simple({
         transaction,
         senderAuthenticator,
       });
 
-      const executedTx = await this.aptos.waitForTransaction({
+      const executedTx = await aptos.waitForTransaction({
         transactionHash: pendingTx.hash,
       });
 
@@ -447,16 +484,80 @@ class AptosService {
   }
 
   /**
-   * Claim a capsule (beneficiary must sign this, so we provide the payload for frontend to sign)
-   * or we can do it via a sponsored transaction if the beneficiary has a signature.
+   * Mint a Block Pix NFT for a user on Aptos
    */
-  async claimCapsuleOnChain(capsuleId) {
-    // This typically requires the beneficiary to sign. 
-    // For simplicity in this demo, we'll assume the master account can claim it if we wanted, 
-    // but the contract enforces beneficiary == signer.
-    // So we just return the payload for the frontend.
+  async mintNFT(userAddress, name, description, imageUrl, attributes = [], networkName = 'devnet') {
+    try {
+      if (!this.initialized) await this.initialize();
+
+      const aptos = this.getAptos(networkName);
+      const moduleAddress = this.getModuleAddress(networkName);
+
+      if (!moduleAddress) {
+        throw new Error(`Module address not configured for ${networkName}`);
+      }
+
+      console.log(`🎨 Minting NFT: ${name} for ${userAddress} on ${networkName}`);
+
+      // This assumes the move module has a mint_vault_nft function
+      const transaction = await aptos.transaction.build.simple({
+        sender: this.masterAccount.accountAddress,
+        data: {
+          function: `${moduleAddress}::${this.moduleName}::mint_vault_nft`,
+          functionArguments: [
+            userAddress,
+            name,
+            description,
+            imageUrl,
+            JSON.stringify(attributes)
+          ],
+        },
+      });
+
+      const senderAuthenticator = aptos.transaction.sign({
+        signer: this.masterAccount,
+        transaction,
+      });
+
+      const pendingTx = await aptos.transaction.submit.simple({
+        transaction,
+        senderAuthenticator,
+      });
+
+      const executedTx = await aptos.waitForTransaction({
+        transactionHash: pendingTx.hash,
+      });
+
+      console.log(`✅ NFT Minted! Hash: ${pendingTx.hash}`);
+
+      return {
+        success: true,
+        txHash: pendingTx.hash,
+        txVersion: executedTx.version,
+        nftName: name
+      };
+    } catch (error) {
+      console.error('❌ NFT Mint Error:', error.message);
+      // Fallback for demo purposes if module is not fully deployed
+      if (process.env.NODE_ENV === 'development' || !process.env.APTOS_MODULE_ADDRESS) {
+        return {
+          success: true,
+          mock: true,
+          txHash: `mock_nft_tx_${Date.now()}`,
+          nftName: name
+        };
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Claim a capsule (beneficiary must sign this, so we provide the payload for frontend to sign)
+   */
+  async claimCapsuleOnChain(capsuleId, networkName = 'devnet') {
+    const moduleAddress = this.getModuleAddress(networkName);
     return {
-      function: `${this.moduleAddress}::${this.moduleName}::claim_capsule`,
+      function: `${moduleAddress}::${this.moduleName}::claim_capsule`,
       type_arguments: [],
       arguments: [capsuleId.toString()]
     };
@@ -470,13 +571,12 @@ class AptosService {
    * Get transaction details from Aptos
    * @param {string} txHash - Transaction hash
    */
-  async getTransaction(txHash) {
+  async getTransaction(txHash, networkName = 'devnet') {
     try {
-      if (!this.initialized) {
-        await this.initialize();
-      }
+      if (!this.initialized) await this.initialize();
+      const aptos = this.getAptos(networkName);
 
-      const transaction = await this.aptos.getTransactionByHash({
+      const transaction = await aptos.getTransactionByHash({
         transactionHash: txHash,
       });
 
@@ -498,7 +598,7 @@ class AptosService {
   }
 
   isInitialized() {
-    return this.initialized && this.aptos !== null;
+    return this.initialized;
   }
 }
 

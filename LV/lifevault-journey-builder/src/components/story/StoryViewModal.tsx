@@ -618,6 +618,9 @@ export const StoryViewModal: React.FC<StoryViewModalProps> = ({
                         {editingChapterId === (chapter._id || chapter.id) ? (
                           <div className="space-y-3">
                             <textarea
+                              id={`edit-content-${chapter._id || chapter.id}`}
+                              name={`edit-content-${chapter._id || chapter.id}`}
+                              aria-label="Suggest an improvement or update"
                               placeholder="Suggest an improvement or update..."
                               className="w-full p-3 text-sm border border-black/10 rounded-xl focus:ring-0 resize-none"
                               value={editContent}
@@ -625,6 +628,9 @@ export const StoryViewModal: React.FC<StoryViewModalProps> = ({
                               rows={3}
                             />
                             <input
+                              id={`commit-message-${chapter._id || chapter.id}`}
+                              name={`commit-message-${chapter._id || chapter.id}`}
+                              aria-label="Commit message (optional)"
                               placeholder="Commit message (optional)"
                               className="w-full p-2 text-xs border border-black/10 rounded-lg focus:ring-0"
                               value={commitMessage}

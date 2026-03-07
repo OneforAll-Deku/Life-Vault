@@ -461,6 +461,9 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, isOpen, onClo
             </div>
             <input
               type="file"
+              id="profile-picture-upload"
+              name="profile-picture-upload"
+              aria-label="Upload profile picture"
               ref={fileInputRef}
               onChange={handleFileChange}
               className="hidden"
@@ -471,8 +474,10 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, isOpen, onClo
 
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Display Name</label>
+              <label htmlFor="settings-displayName" className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Display Name</label>
               <input
+                id="settings-displayName"
+                name="settings-displayName"
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -482,8 +487,10 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ user, isOpen, onClo
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Bio</label>
+              <label htmlFor="settings-bio" className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Bio</label>
               <textarea
+                id="settings-bio"
+                name="settings-bio"
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
                 rows={3}

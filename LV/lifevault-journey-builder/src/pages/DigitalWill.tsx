@@ -180,7 +180,21 @@ const DigitalWill: React.FC = () => {
     };
 
     const handleVerifyBeneficiary = async (id: string) => {
-        toast({ title: 'Aptos Verification', description: 'Simulating on-chain verification for this identity.' });
+        if (!currentWill?._id) return;
+        setSaving(true);
+        try {
+            await willAPI.verifyBeneficiary(currentWill._id, id);
+            toast({ title: 'Aptos Verification', description: 'Beneficiary identity successfully verified on the Aptos blockchain.' });
+            fetchData();
+        } catch (e: any) {
+            toast({
+                title: 'Verification Error',
+                description: e.response?.data?.message || 'Failed to verify identity on-chain.',
+                variant: 'destructive'
+            });
+        } finally {
+            setSaving(false);
+        }
     };
 
     const handleCheckin = async () => {
@@ -402,18 +416,18 @@ const DigitalWill: React.FC = () => {
                                                     <h3 className="font-bold text-slate-900">New Beneficiary</h3>
                                                     <div className="grid md:grid-cols-3 gap-4">
                                                         <div className="space-y-1.5">
-                                                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Full Name</label>
-                                                            <input type="text" placeholder="John Doe" value={newBeneficiary.name} onChange={(e) => setNewBeneficiary(prev => ({ ...prev, name: e.target.value }))}
+                                                            <label htmlFor="beneficiary-name" className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Full Name</label>
+                                                            <input id="beneficiary-name" name="beneficiary-name" type="text" placeholder="John Doe" value={newBeneficiary.name} onChange={(e) => setNewBeneficiary(prev => ({ ...prev, name: e.target.value }))}
                                                                 className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm focus:border-indigo-400 outline-none transition-all" />
                                                         </div>
                                                         <div className="space-y-1.5">
-                                                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Email (Optional for Invite)</label>
-                                                            <input type="email" placeholder="john@example.com" value={newBeneficiary.email} onChange={(e) => setNewBeneficiary(prev => ({ ...prev, email: e.target.value }))}
+                                                            <label htmlFor="beneficiary-email" className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Email (Optional for Invite)</label>
+                                                            <input id="beneficiary-email" name="beneficiary-email" type="email" placeholder="john@example.com" value={newBeneficiary.email} onChange={(e) => setNewBeneficiary(prev => ({ ...prev, email: e.target.value }))}
                                                                 className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm focus:border-indigo-400 outline-none transition-all" />
                                                         </div>
                                                         <div className="space-y-1.5">
                                                             <div className="flex items-center justify-between ml-1">
-                                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Wallet Address / Auth ID</label>
+                                                                <label htmlFor="beneficiary-wallet" className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Wallet Address / Auth ID</label>
                                                                 {account?.address && (
                                                                     <button
                                                                         type="button"
@@ -424,12 +438,12 @@ const DigitalWill: React.FC = () => {
                                                                     </button>
                                                                 )}
                                                             </div>
-                                                            <input type="text" placeholder="0x... or Aptos ID" value={newBeneficiary.walletAddress} onChange={(e) => setNewBeneficiary(prev => ({ ...prev, walletAddress: e.target.value }))}
+                                                            <input id="beneficiary-wallet" name="beneficiary-wallet" type="text" placeholder="0x... or Aptos ID" value={newBeneficiary.walletAddress} onChange={(e) => setNewBeneficiary(prev => ({ ...prev, walletAddress: e.target.value }))}
                                                                 className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm focus:border-indigo-400 outline-none transition-all font-mono" />
                                                         </div>
                                                         <div className="space-y-1.5">
-                                                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Relationship</label>
-                                                            <select value={newBeneficiary.relationship} onChange={(e) => setNewBeneficiary(prev => ({ ...prev, relationship: e.target.value }))}
+                                                            <label htmlFor="beneficiary-relationship" className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Relationship</label>
+                                                            <select id="beneficiary-relationship" name="beneficiary-relationship" value={newBeneficiary.relationship} onChange={(e) => setNewBeneficiary(prev => ({ ...prev, relationship: e.target.value }))}
                                                                 className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm focus:border-indigo-400 outline-none transition-all">
                                                                 <option>Family</option><option>Spouse</option><option>Child</option><option>Sibling</option><option>Close Friend</option><option>Attorney</option>
                                                             </select>

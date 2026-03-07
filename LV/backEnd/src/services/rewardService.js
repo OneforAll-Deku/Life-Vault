@@ -155,25 +155,26 @@ class RewardService {
    */
   async mintQuestNFT(user, quest, questCompletion) {
     try {
-      // This would integrate with Aptos NFT minting
-      // For now, we'll return a placeholder
+      // Integrate with Aptos NFT minting
       console.log(`🎨 Minting NFT for user ${user._id}`);
 
       const nftMetadata = quest.rewards.nftMetadata;
 
-      // TODO: Implement actual Aptos NFT minting
-      // const result = await aptosService.mintNFT(
-      //   user.aptosAddress,
-      //   nftMetadata.name,
-      //   nftMetadata.description,
-      //   nftMetadata.imageUrl,
-      //   nftMetadata.attributes
-      // );
+      const result = await aptosService.mintNFT(
+        user.aptosAddress,
+        nftMetadata.name,
+        nftMetadata.description,
+        nftMetadata.imageUrl,
+        nftMetadata.attributes || [],
+        user.network || 'devnet'
+      );
 
       return {
-        success: true,
+        success: result.success,
         nftName: nftMetadata.name,
-        message: 'NFT minting queued (implementation pending)'
+        txHash: result.txHash,
+        mock: result.mock,
+        message: result.success ? 'NFT minted successfully' : 'NFT minting failed'
       };
 
     } catch (error) {

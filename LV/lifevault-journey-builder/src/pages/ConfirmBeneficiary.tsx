@@ -162,7 +162,7 @@ const ConfirmBeneficiary: React.FC = () => {
                     <div className="bg-white/[0.02] border-t border-white/10 p-6 text-center">
                         <div className="flex items-center justify-center gap-2 opacity-50">
                             <ShieldCheck className="w-4 h-4 text-white" />
-                            <span className="text-xs font-bold text-white uppercase tracking-[0.2em]">Enforced by LifeVault Protocol</span>
+                            <span className="text-xs font-bold text-white uppercase tracking-[0.2em]">Enforced by Block Pix Protocol</span>
                         </div>
                     </div>
                 </div>

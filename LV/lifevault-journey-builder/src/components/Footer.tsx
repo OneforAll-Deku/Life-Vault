@@ -70,6 +70,9 @@ export function Footer() {
                   className="relative flex items-center bg-zinc-900/40 backdrop-blur-md border border-white/20 rounded-full p-2 pr-2 shadow-[4px_4px_0px_0px_rgba(255,255,255,0.05)] hover:shadow-[2px_2px_0px_0px_rgba(255,255,255,0.05)] hover:translate-x-[2px] hover:translate-y-[2px] transition-all"
                 >
                   <input
+                    id="footer-newsletter-email"
+                    name="footer-newsletter-email"
+                    aria-label="Your email address"
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}

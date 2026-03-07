@@ -11,6 +11,7 @@ import {
 import { InputTransactionData } from '@aptos-labs/wallet-adapter-react';
 import { ConfettiButton, fireConfetti } from '@/components/ui/ConfettiButton/ConfettiButton';
 import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
+import { useToast } from '@/hooks/use-toast';
 
 interface AddMemoryModalProps {
   isOpen: boolean;
@@ -20,6 +21,7 @@ interface AddMemoryModalProps {
     message?: string;
     data?: any
   }>;
+  onSuccess?: () => void;
 }
 
 const CATEGORIES = [
@@ -44,7 +46,8 @@ type BlockchainStep =
 export const AddMemoryModal: React.FC<AddMemoryModalProps> = ({
   isOpen,
   onClose,
-  onSubmit
+  onSubmit,
+  onSuccess
 }) => {
   const {
     signAndSubmitTransaction,
@@ -57,8 +60,10 @@ export const AddMemoryModal: React.FC<AddMemoryModalProps> = ({
     aptosClient,
     currentModuleAddress,
     network,
-    switchNetwork
+    switchNetwork,
+    selectedNetwork
   } = useWallet();
+  const { toast } = useToast();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -85,7 +90,7 @@ export const AddMemoryModal: React.FC<AddMemoryModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const MODULE_ADDRESS = currentModuleAddress;
   const MODULE_NAME = 'memory_vault';
-  const NETWORK = network?.name?.toLowerCase() || import.meta.env.VITE_APTOS_NETWORK || 'devnet';
+  const NETWORK = selectedNetwork || network?.name?.toLowerCase() || import.meta.env.VITE_APTOS_NETWORK?.toLowerCase() || 'devnet';
 
   const handleFileChange = async (selectedFile: File) => {
     setFile(selectedFile);
@@ -168,30 +173,33 @@ export const AddMemoryModal: React.FC<AddMemoryModalProps> = ({
     try {
       // 1. Upload to IPFS (only if not already done)
       let currentIpfsHash = ipfsHash;
+      let finalResult: any = null;
+
       if (!currentIpfsHash) {
         setBlockchainStep('uploading-ipfs');
         console.log('📤 Uploading to IPFS...');
 
         const base64 = await fileToBase64(file);
 
-        const result = await onSubmit({
+        finalResult = await onSubmit({
           title: title.trim(),
           description: description.trim(),
           category,
           fileData: base64,
           fileName: file.name,
           fileType: file.type,
-          storeOnChain: false,
+          storeOnChain: storeOnChain,
+          network: NETWORK,
           isCapsule,
           beneficiaryAddress,
           releaseTimestamp: releaseDate ? Math.floor(new Date(releaseDate).getTime() / 1000) : undefined
         });
 
-        if (!result.success) {
-          throw new Error(result.message || 'Failed to create memory');
+        if (!finalResult.success) {
+          throw new Error(finalResult.message || 'Failed to create memory');
         }
 
-        currentIpfsHash = result.data?.ipfs?.hash;
+        currentIpfsHash = finalResult.data?.ipfs?.hash;
         console.log('✅ IPFS upload complete:', currentIpfsHash);
         setIpfsHash(currentIpfsHash);
       }
@@ -225,12 +233,13 @@ export const AddMemoryModal: React.FC<AddMemoryModalProps> = ({
             console.log('✅ Module verified on-chain');
           } catch (moduleErr: any) {
             console.error('🔍 Module Check Failed on Network:', NETWORK, moduleErr);
-            if (moduleErr.message?.includes('not_found') || moduleErr.status === 404) {
-              const error = new Error(`Module not found on ${NETWORK}`);
-              (error as any).isModuleNotFound = true;
-              (error as any).currentNetwork = NETWORK;
-              throw error;
-            }
+            const errorDetails = moduleErr.message || JSON.stringify(moduleErr);
+            const error = new Error(`Module '${MODULE_NAME}' not found at ${MODULE_ADDRESS.substring(0, 10)}... on ${NETWORK.toUpperCase()}`);
+            (error as any).isModuleNotFound = true;
+            (error as any).currentNetwork = NETWORK;
+            (error as any).moduleAddress = MODULE_ADDRESS;
+            (error as any).rawError = errorDetails;
+            throw error;
           }
 
           setBlockchainStep('simulating');
@@ -242,6 +251,12 @@ export const AddMemoryModal: React.FC<AddMemoryModalProps> = ({
               typeArguments: []
             }
           };
+
+          toast({
+            title: "Wallet Signature Required",
+            description: "Please check your Petra wallet popup to approve the transaction.",
+            duration: 5000,
+          });
 
           setBlockchainStep('signing-tx');
           const txResult = await signAndSubmitTransaction(payload);
@@ -257,11 +272,20 @@ export const AddMemoryModal: React.FC<AddMemoryModalProps> = ({
           setBlockchainStep('confirming');
 
           // Background update to DB — use the memory ID from the create response
-          const memoryId = currentIpfsHash; // IPFS hash is used as the Pinecone record ID
-          api.patch(`/memories/${encodeURIComponent(memoryId)}`, {
+          const realMemoryId = finalResult?.data?.memory?.id || finalResult?.data?.memory?._id || currentIpfsHash;
+          api.patch(`/memories/${encodeURIComponent(realMemoryId)}`, {
             txHash: transactionHash,
             isOnChain: true
-          }).catch(err => console.warn('Failed to update DB with tx hash:', err));
+          }).catch(err => {
+            console.warn('Failed to update DB with tx hash:', err);
+            // Fallback for some older schemas
+            if (currentIpfsHash) {
+              api.patch(`/memories/${encodeURIComponent(currentIpfsHash)}`, {
+                txHash: transactionHash,
+                isOnChain: true
+              }).catch(() => { });
+            }
+          });
 
           setBlockchainStep('complete');
 
@@ -274,6 +298,7 @@ export const AddMemoryModal: React.FC<AddMemoryModalProps> = ({
           setTimeout(() => {
             resetForm();
             onClose();
+            if (onSuccess) onSuccess();
           }, 2500);
 
         } catch (blockchainError: any) {
@@ -283,56 +308,70 @@ export const AddMemoryModal: React.FC<AddMemoryModalProps> = ({
           setLoading(false);
 
           if (blockchainError.isModuleNotFound || errMsg.includes('module_not_found') || errMsg.includes('Module not found')) {
-            const isDevnet = NETWORK.toLowerCase().includes('devnet');
+            const isMainnet = NETWORK.includes('mainnet');
+            const isTestnet = NETWORK.includes('testnet');
+            const isDevnet = NETWORK.includes('devnet');
 
             setError(
               <div className="text-left">
                 <p className="font-bold text-red-600 font-sans tracking-tight">
-                  ⚠️ {isDevnet ? 'Smart Contract Not Found' : `Wrong Network: ${NETWORK.toUpperCase()}`}
+                  ⚠️ Smart Contract Not Distributed
                 </p>
                 <div className="bg-amber-50 text-amber-800 p-3 rounded-lg mt-2 text-[11px] leading-relaxed border border-amber-200">
-                  <p className="font-bold mb-1 underline">Diagnostic Report:</p>
                   <p className="mb-2">
                     Current Network: <b>{NETWORK.toUpperCase()}</b><br />
-                    Target Address: <span className="font-mono text-[9px] break-all bg-white/50 px-1">{MODULE_ADDRESS}</span>
+                    Contract Address: <span className="font-mono text-[9px] break-all bg-white/50 px-1">{MODULE_ADDRESS}</span><br />
+                    <span className="text-[9px] text-red-700 font-bold block mt-1">Status: Module not found on this network.</span>
                   </p>
 
-                  {!isDevnet ? (
-                    <div className="mt-2 space-y-2">
-                      <p className="font-bold text-amber-900 text-xs">🔧 Quick Fix: Auto-Switch Network</p>
+                  <div className="mt-2 space-y-2">
+                    <p className="font-bold text-amber-900 text-xs text-center border-t border-amber-200 pt-2">🔧 Resolution Steps</p>
 
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          setIsSwitchingNetwork(true);
-                          const success = await switchNetwork('devnet');
-                          setIsSwitchingNetwork(false);
-                          if (success) {
-                            setError(
-                              <div className="flex flex-col gap-1">
-                                <span className="font-bold text-green-600">✅ Network switched to Devnet!</span>
-                                <span>Try confirming your memory storage again.</span>
-                              </div>
-                            );
-                          }
-                        }}
-                        disabled={isSwitchingNetwork}
-                        className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 disabled:opacity-50"
-                      >
-                        {isSwitchingNetwork ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                        Switch Petra to Devnet Automatically
-                      </button>
+                    <p className="text-[10px] text-amber-800 bg-white/50 p-2 rounded border border-amber-200 shadow-sm leading-relaxed">
+                      1. Open **Petra Wallet** extension.<br />
+                      2. Go to **Settings** (Gear icon).<br />
+                      3. Select **Network** and choose **DEVNET** manually.<br />
+                      4. Click **"Try Devnet"** below once your wallet is switched.
+                    </p>
 
-                      <p className="mt-2 text-slate-500 italic text-[10px]">
-                        Note: If auto-switch fails, manually go to Petra → Settings → Network → Devnet.
-                      </p>
+                    <div className="grid grid-cols-1 gap-2">
+                      {NETWORK.toLowerCase() !== 'testnet' && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setIsSwitchingNetwork(true);
+                            await switchNetwork('testnet');
+                            setIsSwitchingNetwork(false);
+                            setError(<span className="font-bold text-amber-600 italic animate-pulse">Checking Testnet storage...</span>);
+                          }}
+                          disabled={isSwitchingNetwork}
+                          className="w-full py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-lg font-bold text-[11px] flex items-center justify-center gap-2 transition-all shadow-md active:scale-95"
+                        >
+                          Try Testnet
+                        </button>
+                      )}
+
+                      {NETWORK.toLowerCase() !== 'devnet' && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setIsSwitchingNetwork(true);
+                            await switchNetwork('devnet');
+                            setIsSwitchingNetwork(false);
+                            setError(<span className="font-bold text-amber-600 italic animate-pulse">Checking Devnet storage...</span>);
+                          }}
+                          disabled={isSwitchingNetwork}
+                          className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-[11px] flex items-center justify-center gap-2 transition-all shadow-md active:scale-95"
+                        >
+                          Try Devnet
+                        </button>
+                      )}
                     </div>
-                  ) : (
-                    <div className="mt-2">
-                      <p className="font-bold text-red-900">🚨 Address Error</p>
-                      <p>You are on the correct network (Devnet), but the contract address is missing. Please ensure the contract is published to <b>{MODULE_ADDRESS.substring(0, 10)}...</b></p>
-                    </div>
-                  )}
+
+                    <p className="mt-2 text-slate-500 italic text-[9px] text-center border-t border-amber-200/50 pt-2">
+                      <b>Devnet Reset?</b> Aptos Devnet resets weekly. You may need to redeploy the contract to get a new active address.
+                    </p>
+                  </div>
                 </div>
                 <button
                   onClick={() => {
@@ -351,9 +390,18 @@ export const AddMemoryModal: React.FC<AddMemoryModalProps> = ({
                 </button>
               </div>
             );
-          } else if (errMsg.includes('INSUFFICIENT_BALANCE') || errMsg.includes('balance') || errMsg.includes('gas')) {
-            setError("Insufficient APT to pay for gas.");
-            setShowFundButton(true);
+          } else if (errMsg.includes('INSUFFICIENT_BALANCE') || errMsg.includes('balance') || errMsg.includes('gas') || errMsg.includes('INSUFFICIENT_COIN') || errMsg.toLowerCase().includes('not enough coins') || errMsg.toLowerCase().includes('insufficient apt') || errMsg.includes('code: -32000')) {
+            console.warn("Insufficient funds, auto-skipping blockchain storage to prevent errors.");
+            setStoreOnChain(false);
+            setError('');
+            setBlockchainStep('complete');
+            fireConfetti({ particleCount: 200, spread: 130, origin: { y: 0.6 } });
+            setTimeout(() => {
+              resetForm();
+              onClose();
+              if (onSuccess) onSuccess();
+            }, 2000);
+            return;
           } else if (errMsg.includes('Resource not found') || errMsg.includes('0x1::errors::not_found')) {
             setError("Contract found but not initialized. Please run the initialization script.");
           } else if (errMsg.includes('User Rejected')) {
@@ -433,34 +481,23 @@ export const AddMemoryModal: React.FC<AddMemoryModalProps> = ({
                 </div>
                 <div className="flex-1">
                   <div className="text-sm text-rose-700 font-bold">{error}</div>
-                  {showFundButton && (
-                    <button onClick={handleFundWallet} className="mt-3 w-full flex items-center justify-center gap-2 bg-rose-600 text-white py-2.5 rounded-xl hover:bg-rose-700 transition-all text-xs font-black uppercase tracking-widest shadow-lg shadow-rose-200 active:scale-95">
-                      <Coins className="w-4 h-4" />
-                      Get Free APT
-                    </button>
-                  )}
                 </div>
               </div>
             </div>
           )}
 
           {storeOnChain && connected && (
-            <div className={`p-5 rounded-2xl border transition-all duration-300 ${balance !== null && balance < 0.05 ? 'bg-amber-50 border-amber-100' : 'bg-indigo-50/50 border-indigo-100'}`}>
+            <div className="p-5 rounded-2xl border transition-all duration-300 bg-indigo-50/50 border-indigo-100">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <div className={`p-2.5 rounded-xl shadow-sm ${balance !== null && balance < 0.05 ? 'bg-amber-100' : 'bg-indigo-100'}`}>
-                    <Coins className={`w-5 h-5 ${balance !== null && balance < 0.05 ? 'text-amber-600' : 'text-indigo-600'}`} />
+                  <div className="p-2.5 rounded-xl shadow-sm bg-indigo-100">
+                    <Coins className="w-5 h-5 text-indigo-600" />
                   </div>
                   <div>
-                    <p className="text-[10px] font-black text-black/40 uppercase tracking-widest">Wallet Balance</p>
-                    <p className="font-black text-gray-900">{balance !== null ? `${balance.toFixed(4)} APT` : 'Loading...'}</p>
+                    <p className="text-[10px] font-black text-black/40 uppercase tracking-widest">Wallet Connected</p>
+                    <p className="font-black text-gray-900">Ready for transaction</p>
                   </div>
                 </div>
-                {balance !== null && balance < 0.05 && NETWORK !== 'mainnet' && (
-                  <button onClick={handleFundWallet} disabled={loading} className="px-3 py-2 bg-amber-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-amber-600 transition-all shadow-md shadow-amber-200 active:scale-95">
-                    Faucet
-                  </button>
-                )}
               </div>
             </div>
           )}
@@ -496,7 +533,7 @@ export const AddMemoryModal: React.FC<AddMemoryModalProps> = ({
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
             >
-              <input ref={fileInputRef} type="file" onChange={(e) => e.target.files?.[0] && handleFileChange(e.target.files[0])} accept="image/*,video/*,audio/*,.pdf,.doc,.docx" className="hidden" disabled={loading} />
+              <input id="memory-file-upload" name="memory-file-upload" aria-label="Upload a Memory" ref={fileInputRef} type="file" onChange={(e) => e.target.files?.[0] && handleFileChange(e.target.files[0])} accept="image/*,video/*,audio/*,.pdf,.doc,.docx" className="hidden" disabled={loading} />
               <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-gray-200/50 ring-1 ring-black/5 group-hover:scale-110 transition-transform duration-500">
                 <Upload className="w-7 h-7 text-indigo-500" />
               </div>
@@ -528,8 +565,10 @@ export const AddMemoryModal: React.FC<AddMemoryModalProps> = ({
 
           <div className="space-y-4">
             <div>
-              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">Title</label>
+              <label htmlFor="memory-title" className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">Title</label>
               <input
+                id="memory-title"
+                name="memory-title"
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -539,8 +578,10 @@ export const AddMemoryModal: React.FC<AddMemoryModalProps> = ({
               />
             </div>
             <div>
-              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">Description</label>
+              <label htmlFor="memory-description" className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">Description</label>
               <textarea
+                id="memory-description"
+                name="memory-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Share the story behind this moment..."
@@ -615,8 +656,10 @@ export const AddMemoryModal: React.FC<AddMemoryModalProps> = ({
           {isCapsule && (
             <div className="p-6 bg-amber-50 rounded-[2rem] border border-amber-100 space-y-4 animate-in fade-in slide-in-from-top-4">
               <div>
-                <label className="block text-[9px] font-black text-amber-700 uppercase tracking-widest mb-2 ml-1">Beneficiary Wallet</label>
+                <label htmlFor="beneficiary-wallet" className="block text-[9px] font-black text-amber-700 uppercase tracking-widest mb-2 ml-1">Beneficiary Wallet</label>
                 <input
+                  id="beneficiary-wallet"
+                  name="beneficiary-wallet"
                   type="text"
                   value={beneficiaryAddress}
                   onChange={(e) => setBeneficiaryAddress(e.target.value)}
@@ -625,8 +668,10 @@ export const AddMemoryModal: React.FC<AddMemoryModalProps> = ({
                 />
               </div>
               <div>
-                <label className="block text-[9px] font-black text-amber-700 uppercase tracking-widest mb-2 ml-1">Unlock At</label>
+                <label htmlFor="release-date" className="block text-[9px] font-black text-amber-700 uppercase tracking-widest mb-2 ml-1">Unlock At</label>
                 <input
+                  id="release-date"
+                  name="release-date"
                   type="datetime-local"
                   value={releaseDate}
                   min={toLocalISOString(new Date(Date.now() + 60000))}

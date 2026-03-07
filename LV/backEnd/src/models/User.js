@@ -1,111 +1,66 @@
 import jwt from 'jsonwebtoken';
 import { Account } from '@aptos-labs/ts-sdk';
-import fs from 'fs';
-import path from 'path';
-import pineconeService from '../services/pineconeService.js';
-import { matchesQuery } from '../utils/queryHelper.js';
-
-const USERS_FILE = path.join(process.cwd(), 'data', 'users.json');
-
-// Ensure users file exists
-if (!fs.existsSync(path.dirname(USERS_FILE))) {
-  fs.mkdirSync(path.dirname(USERS_FILE), { recursive: true });
-}
-if (!fs.existsSync(USERS_FILE)) {
-  fs.writeFileSync(USERS_FILE, JSON.stringify([]));
-}
+import supabaseService from '../services/supabaseService.js';
+import { Query } from '../utils/queryHelper.js';
+import { applyUpdate } from '../utils/modelHelper.js';
 
 class User {
   constructor(data) {
     Object.assign(this, data);
-    this._id = data._id || `user_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    this._id = data._id || data.id || `user_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    this.id = this._id;
     this.name = data.name || (data.email ? data.email.split('@')[0] : 'User');
-    this.userType = data.userType || 'user';
-    this.createdAt = data.createdAt || new Date();
-    this.totalMemories = data.totalMemories || 0;
-    this.storageUsed = data.storageUsed || 0;
+    this.userType = data.user_type || data.userType || 'user';
+    this.createdAt = data.created_at || data.createdAt || new Date();
+    this.totalMemories = data.total_memories || data.totalMemories || 0;
+    this.storageUsed = data.storage_used || data.storageUsed || 0;
+    this.badges = data.badges || [];
+    this.questsCompleted = data.quests_completed || data.questsCompleted || [];
+    this.achievements = data.achievements || [];
+    this.points = data.points || 0;
+    this.level = data.level || 1;
+    this.preferences = data.preferences || {};
+    this.storiesCreated = data.stories_created || data.storiesCreated || [];
+    this.digitalWillsCreated = data.digital_wills_created || data.digitalWillsCreated || [];
+    this.lastLogin = data.last_login || data.lastLogin || new Date();
+    this.isActive = data.is_active ?? data.isActive ?? true;
+    this.lastCheckIn = data.last_check_in || data.lastCheckIn || new Date();
+    this.aptosAddress = data.aptos_address || data.aptosAddress || '';
   }
 
-  static async find(query = {}) {
-    const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-    return users.filter(u => matchesQuery(u, query)).map(u => new User(u));
+  static find(query = {}) {
+    const dbQuery = {};
+    if (query.email) dbQuery.email = query.email;
+    if (query.aptosAddress) dbQuery.aptos_address = query.aptosAddress;
+    if (query.id) dbQuery.id = query.id;
+    if (query._id) dbQuery.id = query._id;
+
+    const promise = supabaseService.find('users', dbQuery).then(data => data.map(u => new User(u)));
+    return new Query(promise, query);
   }
 
   static async findOne(query) {
-    const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-    let userData = users.find(u => matchesQuery(u, query));
-
-    if (!userData && query.email) {
-      console.log(`🔍 User ${query.email} not in local JSON. Checking Pinecone...`);
-      userData = await pineconeService.findUserByEmail(query.email);
-      if (userData) {
-        // Rehydrate locally
-        const user = new User(userData);
-        await user.save({ skipPinecone: true });
-        return user;
-      }
-    }
-
-    return userData ? new User(userData) : null;
+    const results = await this.find(query);
+    return results.length > 0 ? results[0] : null;
   }
 
   static async findById(id) {
-    const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-    let userData = users.find(u => u._id === id);
-
-    if (!userData) {
-      console.log(`🔍 User ${id} not in local JSON. Checking Pinecone...`);
-      const pineconeRecord = await pineconeService.getRecord(id, 'users');
-      if (pineconeRecord) {
-        userData = pineconeRecord.metadata || pineconeRecord;
-        if (userData) {
-          const user = new User(userData);
-          await user.save({ skipPinecone: true });
-          return user;
-        }
-      }
-    }
-
-    return userData ? new User(userData) : null;
+    const data = await supabaseService.getRecord(id, 'users');
+    return data ? new User(data) : null;
   }
 
   static async findOneAndUpdate(query, update, options = {}) {
-    const item = await this.findOne(query);
-    if (item) {
-      const dataToSet = update.$set || update;
-      Object.assign(item, dataToSet);
-      await item.save();
-      return item;
+    const user = await this.findOne(query);
+    if (user) {
+      applyUpdate(user, update);
+      await user.save();
+      return user;
     }
     return null;
   }
 
   static async findByIdAndUpdate(id, update) {
-    const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-    const index = users.findIndex(u => u._id === id);
-    if (index !== -1) {
-      const user = users[index];
-
-      // Handle $push
-      if (update.$push) {
-        for (let key in update.$push) {
-          if (!Array.isArray(user[key])) user[key] = [];
-          user[key].push(update.$push[key]);
-        }
-      }
-
-      // Handle $set or direct update
-      const dataToSet = update.$set || update;
-      for (let key in dataToSet) {
-        if (key.startsWith('$')) continue;
-        user[key] = dataToSet[key];
-      }
-
-      users[index] = user;
-      fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-      return new User(users[index]);
-    }
-    return null;
+    return this.findOneAndUpdate({ id: id }, update);
   }
 
   toObject() {
@@ -113,33 +68,42 @@ class User {
   }
 
   async save(options = {}) {
-    const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-    const index = users.findIndex(u => u._id === this._id || (u.email && u.email === this.email));
+    const userData = {
+      id: this.id || this._id,
+      email: this.email,
+      password: this.password,
+      name: this.name,
+      user_type: this.userType,
+      avatar: this.avatar || '',
+      bio: this.bio || '',
+      aptos_address: this.aptosAddress,
+      total_memories: this.totalMemories || 0,
+      storage_used: this.storageUsed || 0,
+      badges: this.badges || [],
+      quests_completed: this.questsCompleted || this.quests_completed || [],
+      achievements: this.achievements || [],
+      points: this.points || 0,
+      level: this.level || 1,
+      preferences: this.preferences || {},
+      stories_created: this.storiesCreated || [],
+      digital_wills_created: this.digitalWillsCreated || [],
+      last_login: this.lastLogin || new Date(),
+      is_active: this.isActive ?? true,
+      last_check_in: this.lastCheckIn || new Date(),
+    };
 
-    if (index !== -1) {
-      users[index] = { ...users[index], ...this };
-    } else {
-      users.push(this);
-    }
-
-    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-
-    // Also sync to Pinecone for permanent persistence (unless skipping)
-    if (!options.skipPinecone) {
-      await pineconeService.upsertUser(this);
-    }
-
+    await supabaseService.upsert(userData.id, userData, 'users');
     return this;
   }
 
   async comparePassword(candidatePassword) {
-    return candidatePassword === this.password; // Simplified for demo
+    return candidatePassword === this.password; // Simplified for demo as in original
   }
 
   generateAuthToken() {
     return jwt.sign(
       {
-        id: this._id,
+        id: this.id || this._id,
         email: this.email,
         aptosAddress: this.aptosAddress,
         userType: this.userType
@@ -155,27 +119,24 @@ class User {
     return this.aptosAddress;
   }
 
-  select(fields) {
-    // Mocking select behavior
-    return this;
-  }
-
+  select(fields) { return this; }
   populate() { return this; }
   sort() { return this; }
 
   static async deleteMany(query) {
-    const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-    const filtered = users.filter(u => !matchesQuery(u, query));
-    fs.writeFileSync(USERS_FILE, JSON.stringify(filtered, null, 2));
-    return { deletedCount: users.length - filtered.length };
+    const users = await this.find(query);
+    let deletedCount = 0;
+    for (const u of users) {
+      await supabaseService.deleteRecord(u.id || u._id, 'users');
+      deletedCount++;
+    }
+    return { deletedCount };
   }
 
   static async deleteOne(query) {
-    const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-    const index = users.findIndex(u => matchesQuery(u, query));
-    if (index !== -1) {
-      const deleted = users.splice(index, 1);
-      fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+    const user = await this.findOne(query);
+    if (user) {
+      await supabaseService.deleteRecord(user.id || user._id, 'users');
       return { deletedCount: 1 };
     }
     return { deletedCount: 0 };
@@ -184,27 +145,19 @@ class User {
   static async findOneAndDelete(query) {
     const user = await this.findOne(query);
     if (user) {
-      await this.deleteOne({ _id: user._id });
+      await this.deleteOne({ id: user.id || user._id });
       return user;
     }
     return null;
   }
 
   static async updateMany(query, update) {
-    const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+    const users = await this.find(query);
     let modifiedCount = 0;
-    const dataToSet = update.$set || update;
-
-    const updatedUsers = users.map(user => {
-      if (matchesQuery(user, query)) {
-        modifiedCount++;
-        return { ...user, ...dataToSet, updatedAt: new Date() };
-      }
-      return user;
-    });
-
-    if (modifiedCount > 0) {
-      fs.writeFileSync(USERS_FILE, JSON.stringify(updatedUsers, null, 2));
+    for (const user of users) {
+      applyUpdate(user, update);
+      await user.save();
+      modifiedCount++;
     }
     return { modifiedCount };
   }

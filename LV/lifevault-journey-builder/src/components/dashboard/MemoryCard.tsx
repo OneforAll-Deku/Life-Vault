@@ -125,9 +125,16 @@ export const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onClick }) => {
       {/* Content */}
       <div className="p-4">
         <div className="flex items-start justify-between gap-2.5 mb-2">
-          <h3 className={`font-bold truncate transition-colors tracking-tight text-sm ${isDark ? 'text-white group-hover:text-violet-400' : 'text-gray-900 group-hover:text-violet-600'}`}>
-            {memory.title}
-          </h3>
+          <div className="flex flex-col gap-1 min-w-0">
+            <h3 className={`font-bold truncate transition-colors tracking-tight text-sm ${isDark ? 'text-white group-hover:text-violet-400' : 'text-gray-900 group-hover:text-violet-600'}`}>
+              {memory.title}
+            </h3>
+            {memory.network && (
+              <span className={`text-[8px] font-black uppercase tracking-[0.1em] ${memory.network === 'mainnet' ? 'text-emerald-500' : memory.network === 'testnet' ? 'text-amber-500' : 'text-indigo-500'}`}>
+                {memory.network}
+              </span>
+            )}
+          </div>
           <span
             className="text-[8px] font-bold uppercase tracking-widest px-2 py-1 rounded-md flex-shrink-0"
             style={{

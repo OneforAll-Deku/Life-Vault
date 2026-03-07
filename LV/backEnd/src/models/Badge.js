@@ -1,78 +1,64 @@
-import fs from 'fs';
-import path from 'path';
 import crypto from 'crypto';
+import supabaseService from '../services/supabaseService.js';
 import { BADGE_RARITY } from '../config/constants.js';
-import { matchesQuery, Query } from '../utils/queryHelper.js';
-
-const DATA_FILE = path.join(process.cwd(), 'data', 'badges.json');
-
-// Ensure data folder and file exist
-if (!fs.existsSync(path.dirname(DATA_FILE))) {
-  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-}
-if (!fs.existsSync(DATA_FILE)) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify([]));
-}
+import { Query } from '../utils/queryHelper.js';
+import { applyUpdate } from '../utils/modelHelper.js';
 
 class Badge {
   constructor(data) {
     Object.assign(this, data);
-    this._id = data._id || `badge_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    this._id = data._id || data.id || `badge_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    this.id = this._id;
     this.name = data.name;
     this.description = data.description || '';
-    this.shortCode = data.shortCode || 'B' + crypto.randomBytes(3).toString('hex').toUpperCase();
-    this.creatorId = data.creatorId;
-    this.campaignId = data.campaignId || null;
-    this.imageUrl = data.imageUrl;
-    this.thumbnailUrl = data.thumbnailUrl || null;
-    this.animatedUrl = data.animatedUrl || null;
-    this.backgroundColor = data.backgroundColor || '#000000';
-    this.nftMetadata = data.nftMetadata || { isNft: false, collectionId: null, maxSupply: null, currentSupply: 0, royaltyPercentage: 0, attributes: [] };
+    this.shortCode = data.shortCode || data.short_code || 'B' + crypto.randomBytes(3).toString('hex').toUpperCase();
+    this.creatorId = data.creatorId || data.creator_id;
+    this.campaignId = data.campaignId || data.campaign_id || null;
+    this.imageUrl = data.imageUrl || data.image_url;
+    this.thumbnailUrl = data.thumbnailUrl || data.thumbnail_url || null;
+    this.animatedUrl = data.animatedUrl || data.animated_url || null;
+    this.backgroundColor = data.backgroundColor || data.background_color || '#000000';
+    this.nftMetadata = data.nftMetadata || data.nft_metadata || { isNft: false };
     this.rarity = data.rarity || BADGE_RARITY.COMMON;
     this.category = data.category || 'achievement';
     this.tier = data.tier || 1;
-    this.requirements = data.requirements || { questId: null, campaignCompletion: false, questCount: 0, specificLocations: [], customCondition: '' };
+    this.requirements = data.requirements || {};
     this.stats = data.stats || { totalAwarded: 0, uniqueHolders: 0 };
-    this.onChainBadgeId = data.onChainBadgeId || null;
-    this.contractAddress = data.contractAddress || null;
-    this.metadataUri = data.metadataUri || null;
-    this.isActive = data.isActive ?? true;
-    this.isTransferable = data.isTransferable ?? true;
-    this.isBurnable = data.isBurnable || false;
-    this.expiresAt = data.expiresAt || null;
-    this.pointValue = data.pointValue || 0;
-    this.createdAt = data.createdAt || new Date();
-    this.updatedAt = data.updatedAt || new Date();
+    this.onChainBadgeId = data.onChainBadgeId || data.on_chain_badge_id || null;
+    this.contractAddress = data.contractAddress || data.contract_address || null;
+    this.metadataUri = data.metadataUri || data.metadata_uri || null;
+    this.isActive = data.isActive ?? data.is_active ?? true;
+    this.isTransferable = data.isTransferable ?? data.is_transferable ?? true;
+    this.isBurnable = data.isBurnable || data.is_burnable || false;
+    this.expiresAt = data.expiresAt || data.expires_at || null;
+    this.pointValue = data.pointValue || data.point_value || 0;
+    this.createdAt = data.createdAt || data.created_at || new Date();
+    this.updatedAt = data.updatedAt || data.updated_at || new Date();
   }
 
   static find(query = {}) {
-    try {
-      if (!fs.existsSync(DATA_FILE)) return new Query([]);
-      const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-      const results = items.filter(item => matchesQuery(item, query)).map(item => new Badge(item));
-      return new Query(results);
-    } catch (err) {
-      console.error('Error reading badges.json:', err.message);
-      return new Query([]);
-    }
+    const dbQuery = {};
+    if (query.creatorId) dbQuery.creator_id = query.creatorId;
+    if (query.campaignId) dbQuery.campaign_id = query.campaignId;
+    if (query.id) dbQuery.id = query.id;
+    if (query._id) dbQuery.id = query._id;
+
+    // Supabase query
+    const promise = supabaseService.find('badges', dbQuery).then(data => data.map(b => new Badge(b)));
+    return new Query(promise, query);
   }
 
   static async findOne(query) {
-    const q = this.find(query);
-    const results = await q;
-    return results.length > 0 ? results[0] : null;
+    const items = await this.find(query);
+    return items.length > 0 ? items[0] : null;
   }
 
   static async findById(id) {
-    const q = this.find({ _id: id });
-    const results = await q;
-    return results.length > 0 ? results[0] : null;
+    const data = await supabaseService.getRecord(id, 'badges');
+    return data ? new Badge(data) : null;
   }
 
-  toObject() {
-    return { ...this };
-  }
-
+  toObject() { return { ...this }; }
   populate() { return this; }
   sort() { return this; }
   limit() { return this; }
@@ -80,15 +66,37 @@ class Badge {
   select() { return this; }
 
   async save() {
-    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
     this.updatedAt = new Date();
-    const index = items.findIndex(i => i._id === this._id);
-    if (index !== -1) {
-      items[index] = { ...this };
-    } else {
-      items.push({ ...this });
-    }
-    fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
+    const dataToSave = {
+      id: this.id || this._id,
+      name: this.name,
+      description: this.description,
+      short_code: this.shortCode,
+      creator_id: this.creatorId,
+      campaign_id: this.campaignId,
+      image_url: this.imageUrl,
+      thumbnail_url: this.thumbnailUrl,
+      animated_url: this.animatedUrl,
+      background_color: this.backgroundColor,
+      nft_metadata: this.nftMetadata,
+      rarity: this.rarity,
+      category: this.category,
+      tier: this.tier,
+      requirements: this.requirements,
+      stats: this.stats,
+      on_chain_badge_id: this.onChainBadgeId,
+      contract_address: this.contractAddress,
+      metadata_uri: this.metadataUri,
+      is_active: this.isActive,
+      is_transferable: this.isTransferable,
+      is_burnable: this.isBurnable,
+      expires_at: this.expiresAt,
+      point_value: this.pointValue,
+      created_at: this.createdAt,
+      updated_at: this.updatedAt
+    };
+
+    await supabaseService.upsert(dataToSave.id, dataToSave, 'badges');
     return this;
   }
 
@@ -101,8 +109,7 @@ class Badge {
   static async findOneAndUpdate(query, update, options = {}) {
     const item = await this.findOne(query);
     if (item) {
-      const dataToSet = update.$set || update;
-      Object.assign(item, dataToSet);
+      applyUpdate(item, update);
       await item.save();
       return item;
     }
@@ -110,26 +117,23 @@ class Badge {
   }
 
   static async findByIdAndUpdate(id, update) {
-    return this.findOneAndUpdate({ _id: id }, update);
+    return this.findOneAndUpdate({ id: id }, update);
   }
 
   static async deleteOne(query) {
     const item = await this.findOne(query);
     if (item) {
-      const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-      const filtered = items.filter(i => i._id !== item._id);
-      fs.writeFileSync(DATA_FILE, JSON.stringify(filtered, null, 2));
+      await supabaseService.deleteRecord(item.id || item._id, 'badges');
       return { deletedCount: 1 };
     }
     return { deletedCount: 0 };
   }
 
   static async deleteMany(query) {
-    const q = this.find(query);
-    const items = await q;
+    const items = await this.find(query);
     let deletedCount = 0;
     for (const item of items) {
-      await this.deleteOne({ _id: item._id });
+      await this.deleteOne({ id: item.id || item._id });
       deletedCount++;
     }
     return { deletedCount };
@@ -138,20 +142,18 @@ class Badge {
   static async findOneAndDelete(query) {
     const item = await this.findOne(query);
     if (item) {
-      await this.deleteOne({ _id: item._id });
+      await this.deleteOne({ id: item.id || item._id });
       return item;
     }
     return null;
   }
 
   static async updateMany(query, update) {
-    const q = this.find(query);
-    const items = await q;
+    const items = await this.find(query);
     let modifiedCount = 0;
-    const dataToSet = update.$set || update;
 
     for (const item of items) {
-      Object.assign(item, dataToSet);
+      applyUpdate(item, update);
       await item.save();
       modifiedCount++;
     }
@@ -159,13 +161,39 @@ class Badge {
   }
 
   static async countDocuments(query = {}) {
-    const q = this.find(query);
-    const items = await q;
+    const items = await this.find(query);
     return items.length;
   }
 
   async deleteOne() {
-    return Badge.deleteOne({ _id: this._id });
+    return Badge.deleteOne({ id: this.id || this._id });
+  }
+
+  async awardTo(userId) {
+    // Dynamic import to avoid circular dependency
+    const User = (await import('./User.js')).default;
+    const user = await User.findById(userId);
+    if (!user) throw new Error('User not found');
+
+    if (!user.badges) user.badges = [];
+
+    const alreadyHas = user.badges.find(
+      (b) => (b.badgeId || b.badge_id)?.toString() === (this.id || this._id).toString()
+    );
+    if (alreadyHas) throw new Error('User already has this badge');
+
+    user.badges.push({
+      badgeId: this.id || this._id,
+      awardedAt: new Date(),
+    });
+
+    await user.save();
+
+    this.stats.totalAwarded = (this.stats.totalAwarded || 0) + 1;
+    this.stats.uniqueHolders = (this.stats.uniqueHolders || 0) + 1;
+    await this.save();
+
+    return true;
   }
 }
 

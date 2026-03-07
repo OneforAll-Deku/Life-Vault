@@ -227,7 +227,7 @@ const SharedMemory: React.FC = () => {
             className="inline-flex items-center gap-3 px-8 py-4 bg-black text-white rounded-2xl font-bold hover:bg-black/80 transition-all hover:scale-[1.02] active:scale-[0.98]"
           >
             <Vault className="w-5 h-5" />
-            Return to Life Vault
+            Return to Block Pix
           </Link>
         </div>
       </div>
@@ -255,9 +255,11 @@ const SharedMemory: React.FC = () => {
               <div className="mb-8 p-5 bg-purple-50/50 border border-purple-100 rounded-2xl space-y-4">
                 <div className="flex items-center gap-3 text-purple-700 font-bold text-sm uppercase tracking-wider">
                   <Fingerprint className="w-5 h-5" />
-                  ZK Identity Verification
+                  <label htmlFor="zk-secret">ZK Identity Verification</label>
                 </div>
                 <input
+                  id="zk-secret"
+                  name="zk-secret"
                   type="password"
                   value={zkSecret}
                   onChange={(e) => setZkSecret(e.target.value)}
@@ -274,10 +276,12 @@ const SharedMemory: React.FC = () => {
 
             {securityRequired.password && (
               <div className="mb-8">
-                <label className="block text-sm font-bold text-gray-400 uppercase tracking-widest mb-3 px-1">
+                <label htmlFor="access-password" className="block text-sm font-bold text-gray-400 uppercase tracking-widest mb-3 px-1">
                   Access Password
                 </label>
                 <input
+                  id="access-password"
+                  name="access-password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -327,7 +331,7 @@ const SharedMemory: React.FC = () => {
             <div className="w-10 h-10 rounded-xl bg-black flex items-center justify-center shadow-lg shadow-black/10">
               <Vault className="w-6 h-6 text-white" />
             </div>
-            <span className="text-xl font-black text-black tracking-tight uppercase">Life Vault</span>
+            <span className="text-xl font-black text-black tracking-tight uppercase">Block Pix</span>
           </Link>
 
           <div className="flex items-center gap-6">
@@ -456,7 +460,7 @@ const SharedMemory: React.FC = () => {
               </div>
               <h4 className="text-xl font-black mb-3 italic">Vault Statement</h4>
               <p className="text-white/60 text-sm leading-relaxed mb-6 font-medium">
-                This asset is protected by Life Vault's cryptographically secure infrastructure. Access is audited and non-replicable.
+                This asset is protected by Block Pix's cryptographically secure infrastructure. Access is audited and non-replicable.
               </p>
               <a
                 href={data?.memory.ipfsUrl}

@@ -17,7 +17,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     useEffect(() => {
         const root = document.documentElement;
         root.classList.remove('dark');
-        localStorage.setItem('lifevault-theme', 'light');
+        localStorage.setItem('blockpix-theme', 'light');
     }, []);
 
     const toggleTheme = useCallback(() => {

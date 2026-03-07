@@ -1,30 +1,38 @@
 @echo off
-echo 🚀 LifeVault Move Contract Deployment Utility
+echo 🚀 Block Pix Move Contract Deployment Utility
 echo --------------------------------------------------
 
-:: Check for Aptos CLI
-aptos version >nul 2>&1
+:: Check for Aptos CLI in PATH or standard install location
+set "APTOS_BIN=aptos"
+where aptos >nul 2>&1
 if %errorLevel% neq 0 (
-    echo ❌ Error: Aptos CLI not found in PATH.
-    echo Please install it first: pip install aptos-cli
-    pause
-    exit /b 1
+    if exist "%USERPROFILE%\.aptoscli\bin\aptos.exe" (
+        set "APTOS_BIN=%USERPROFILE%\.aptoscli\bin\aptos.exe"
+    ) else (
+        echo ❌ Error: Aptos CLI not found in PATH or standard location.
+        echo Please install it first: pip install aptos-cli
+        echo Or run: python install_cli.py
+        pause
+        exit /b 1
+    )
 )
 
+echo Using Aptos CLI: %APTOS_BIN%
+
 echo 1. Initializing Aptos for Devnet...
-aptos init --network devnet
+%APTOS_BIN% init --network devnet
 
 echo.
 echo 2. Funding deployment account...
-aptos account fund-with-faucet --account default --amount 100000000
+%APTOS_BIN% account fund-with-faucet --account default --amount 100000000
 
 echo.
 echo 3. Publishing MemoryVault contract...
-aptos move publish --named-addresses memory_vault=default --assume-yes
+%APTOS_BIN% move publish --named-addresses memory_vault=default --assume-yes
 
 echo.
 echo 4. Initializing contract stores...
-aptos move run --function-id default::memory_vault::initialize --assume-yes
+%APTOS_BIN% move run --function-id default::memory_vault::initialize --assume-yes
 
 echo.
 echo ✅ Deployment Complete!

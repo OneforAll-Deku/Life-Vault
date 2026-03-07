@@ -301,6 +301,9 @@ const QuestMap: React.FC = () => {
                     <form onSubmit={handleSearch} className="relative w-full md:max-w-md">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                         <input
+                            id="quest-search"
+                            name="quest-search"
+                            aria-label="Search locations or challenges"
                             type="text"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}

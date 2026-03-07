@@ -1,51 +1,29 @@
-import fs from 'fs';
-import path from 'path';
-import crypto from 'crypto';
-import { matchesQuery } from '../utils/queryHelper.js';
-
-const DATA_FILE = path.join(process.cwd(), 'data', 'familyvaults.json');
-
-// Ensure data folder and file exist
-if (!fs.existsSync(path.dirname(DATA_FILE))) {
-    fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-}
-if (!fs.existsSync(DATA_FILE)) {
-    fs.writeFileSync(DATA_FILE, JSON.stringify([]));
-}
+import supabaseService from '../services/supabaseService.js';
+import { Query } from '../utils/queryHelper.js';
+import { applyUpdate } from '../utils/modelHelper.js';
 
 class FamilyVault {
     constructor(data) {
         Object.assign(this, data);
-        this._id = data._id || `vault_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        this._id = data._id || data.id || `fv_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        this.id = this._id;
+        this.ownerId = data.ownerId || data.owner_id;
         this.name = data.name;
         this.description = data.description || '';
-        this.coverImage = data.coverImage || null;
-        this.emoji = data.emoji || '👪';
-        this.category = data.category || 'family';
-        this.color = data.color || '#6366f1';
-        this.createdBy = data.createdBy;
         this.members = data.members || [];
-        this.memories = data.memories || [];
-        this.invites = data.invites || [];
-        this.stats = data.stats || {
-            totalMemories: 0,
-            totalMembers: 0,
-            totalSize: 0,
-        };
-        this.isArchived = data.isArchived || false;
-        this.createdAt = data.createdAt || new Date();
-        this.updatedAt = data.updatedAt || new Date();
+        this.settings = data.settings || {};
+        this.createdAt = data.createdAt || data.created_at || new Date();
+        this.updatedAt = data.updatedAt || data.updated_at || new Date();
     }
 
-    static async find(query = {}) {
-        try {
-            if (!fs.existsSync(DATA_FILE)) return [];
-            const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-            return items.filter(item => matchesQuery(item, query)).map(item => new FamilyVault(item));
-        } catch (err) {
-            console.error('Error reading familyvaults.json:', err.message);
-            return [];
-        }
+    static find(query = {}) {
+        const dbQuery = {};
+        if (query.ownerId) dbQuery.owner_id = query.ownerId;
+        if (query.id) dbQuery.id = query.id;
+        if (query._id) dbQuery.id = query._id;
+
+        const promise = supabaseService.find('family_vaults', dbQuery).then(data => data.map(fv => new FamilyVault(fv)));
+        return new Query(promise, query);
     }
 
     static async findOne(query) {
@@ -54,15 +32,11 @@ class FamilyVault {
     }
 
     static async findById(id) {
-        const items = await this.find({});
-        const item = items.find(i => i._id === id);
-        return item ? new FamilyVault(item) : null;
+        const data = await supabaseService.getRecord(id, 'family_vaults');
+        return data ? new FamilyVault(data) : null;
     }
 
-    toObject() {
-        return { ...this };
-    }
-
+    toObject() { return { ...this }; }
     populate() { return this; }
     sort() { return this; }
     limit() { return this; }
@@ -70,92 +44,41 @@ class FamilyVault {
     select() { return this; }
 
     async save() {
-        const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-
-        this.stats.totalMembers = this.members.length;
-        this.stats.totalMemories = this.memories.length;
-
         this.updatedAt = new Date();
-        const index = items.findIndex(i => i._id === this._id);
-        if (index !== -1) {
-            items[index] = { ...this };
-        } else {
-            items.push({ ...this });
-        }
-        fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
+        const dataToSave = {
+            id: this.id || this._id,
+            owner_id: this.ownerId,
+            name: this.name,
+            description: this.description,
+            members: this.members,
+            settings: this.settings,
+            emoji: this.emoji,
+            category: this.category,
+            color: this.color,
+            created_by: this.createdBy,
+            is_archived: this.isArchived,
+            memories: this.memories,
+            invites: this.invites,
+            stats: this.stats,
+            created_at: this.createdAt,
+            updated_at: this.updatedAt
+        };
+
+        await supabaseService.upsert(dataToSave.id, dataToSave, 'family_vaults');
         return this;
     }
 
     static async create(data) {
-        const vault = new FamilyVault(data);
-        await vault.save();
-        return vault;
-    }
-
-    static generateInviteCode() {
-        return crypto.randomBytes(6).toString('hex');
-    }
-
-    isMember(userId) {
-        return this.members.some(m => m.userId?.toString() === userId?.toString());
-    }
-
-    getMemberRole(userId) {
-        const member = this.members.find(m => m.userId?.toString() === userId?.toString());
-        return member ? member.role : null;
-    }
-
-    canPerform(userId, action) {
-        const role = this.getMemberRole(userId);
-        if (!role) return false;
-        const permissions = {
-            admin: ['view', 'upload', 'delete', 'invite', 'manage_members', 'edit_vault', 'archive'],
-            contributor: ['view', 'upload', 'invite'],
-            viewer: ['view'],
-        };
-        return permissions[role]?.includes(action) || false;
+        const fv = new FamilyVault(data);
+        await fv.save();
+        return fv;
     }
 
     static async findOneAndUpdate(query, update, options = {}) {
         const item = await this.findOne(query);
         if (item) {
-            const dataToSet = update.$set || update;
-            Object.assign(item, dataToSet);
+            applyUpdate(item, update);
             await item.save();
-            return item;
-        }
-        return null;
-    }
-
-    static async findByIdAndUpdate(id, update) {
-        return this.findOneAndUpdate({ _id: id }, update);
-    }
-
-    static async deleteOne(query) {
-        const item = await this.findOne(query);
-        if (item) {
-            const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-            const filtered = items.filter(i => i._id !== item._id);
-            fs.writeFileSync(DATA_FILE, JSON.stringify(filtered, null, 2));
-            return { deletedCount: 1 };
-        }
-        return { deletedCount: 0 };
-    }
-
-    static async deleteMany(query) {
-        const items = await this.find(query);
-        let deletedCount = 0;
-        for (const item of items) {
-            await this.deleteOne({ _id: item._id });
-            deletedCount++;
-        }
-        return { deletedCount };
-    }
-
-    static async findOneAndDelete(query) {
-        const item = await this.findOne(query);
-        if (item) {
-            await this.deleteOne({ _id: item._id });
             return item;
         }
         return null;
@@ -164,14 +87,29 @@ class FamilyVault {
     static async updateMany(query, update) {
         const items = await this.find(query);
         let modifiedCount = 0;
-        const dataToSet = update.$set || update;
-
         for (const item of items) {
-            Object.assign(item, dataToSet);
+            applyUpdate(item, update);
             await item.save();
             modifiedCount++;
         }
         return { modifiedCount };
+    }
+
+    static async findByIdAndUpdate(id, update) {
+        return this.findOneAndUpdate({ id: id }, update);
+    }
+
+    static async deleteOne(query) {
+        const item = await this.findOne(query);
+        if (item) {
+            await supabaseService.deleteRecord(item.id || item._id, 'family_vaults');
+            return { deletedCount: 1 };
+        }
+        return { deletedCount: 0 };
+    }
+
+    async deleteOne() {
+        return FamilyVault.deleteOne({ id: this.id || this._id });
     }
 
     static async countDocuments(query = {}) {
@@ -179,8 +117,30 @@ class FamilyVault {
         return items.length;
     }
 
-    async deleteOne() {
-        return FamilyVault.deleteOne({ _id: this._id });
+    isMember(userId) {
+        return (this.members || []).some(m => (m.userId || m.user_id)?.toString() === userId.toString());
+    }
+
+    getMemberRole(userId) {
+        const member = (this.members || []).find(m => (m.userId || m.user_id)?.toString() === userId.toString());
+        return member ? member.role : null;
+    }
+
+    canPerform(userId, action) {
+        const role = this.getMemberRole(userId);
+        if (!role) return false;
+        if (role === 'admin') return true;
+
+        const permissions = {
+            'contributor': ['upload', 'view', 'invite'],
+            'viewer': ['view']
+        };
+
+        return (permissions[role] || []).includes(action) || action === 'view';
+    }
+
+    static generateInviteCode() {
+        return Math.random().toString(36).substring(2, 10).toUpperCase();
     }
 }
 

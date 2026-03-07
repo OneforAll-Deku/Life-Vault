@@ -32,9 +32,30 @@ export const matchesQuery = (item, query) => {
 
         // Handle $in
         if (queryValue && typeof queryValue === 'object' && queryValue.$in) {
-            const valuesIn = Array.isArray(queryValue.$in) ? queryValue.$in : [];
-            const itemValStr = itemValue?.toString();
-            if (!valuesIn.some(v => v?.toString() === itemValStr)) return false;
+            const valuesIn = Array.isArray(queryValue.$in) ? queryValue.$in : [queryValue.$in];
+            const itemVals = Array.isArray(itemValue) ? itemValue : [itemValue];
+
+            if (!itemVals.some(iv => valuesIn.some(v => {
+                if (v instanceof RegExp) return v.test(iv?.toString() || '');
+                return v?.toString() === iv?.toString();
+            }))) {
+                return false;
+            }
+            continue;
+        }
+
+        // Handle $regex
+        if (queryValue && typeof queryValue === 'object' && queryValue.$regex) {
+            const pattern = queryValue.$regex;
+            const options = queryValue.$options || '';
+            const regex = new RegExp(pattern, options);
+            if (!regex.test(itemValue?.toString() || '')) return false;
+            continue;
+        }
+
+        // Handle direct RegExp
+        if (queryValue instanceof RegExp) {
+            if (!queryValue.test(itemValue?.toString() || '')) return false;
             continue;
         }
 
@@ -74,33 +95,62 @@ export const matchesQuery = (item, query) => {
 };
 
 export class Query {
-    constructor(results) {
-        this.results = results || [];
+    constructor(resultsOrPromise, filter = null) {
+        if (resultsOrPromise instanceof Promise) {
+            this.promise = resultsOrPromise;
+            this.results = null;
+        } else {
+            this.promise = null;
+            this.results = Array.isArray(resultsOrPromise) ? resultsOrPromise : [];
+        }
+        this.queryFilter = filter;
+    }
+
+    async _getResults() {
+        if (this.promise) {
+            this.results = await this.promise;
+            this.promise = null; // Mark as resolved
+        }
+        if (this.queryFilter && this.results) {
+            this.results = this.results.filter(item => matchesQuery(item, this.queryFilter));
+            this.queryFilter = null; // Mark as filtered
+        }
+        return this.results;
     }
 
     sort(options) {
         if (!options) return this;
-        // Simple mock sort logic if needed, but for now just returning this
-        // In a real scenario, you'd sort this.results here
+        // Simple sort logic can be added here if needed
         return this;
     }
 
     limit(n) {
-        if (typeof n === 'number' && n > 0) {
-            this.results = this.results.slice(0, n);
-        } else if (typeof n === 'string') {
-            const num = parseInt(n);
-            if (!isNaN(num)) this.results = this.results.slice(0, num);
+        const num = parseInt(n);
+        if (isNaN(num)) return this;
+
+        if (this.promise || this.queryFilter) {
+            // Delay limit until after promise/filter
+            const originalThen = this.then.bind(this);
+            this.then = (onFulfilled, onRejected) => {
+                return originalThen(res => res.slice(0, num)).then(onFulfilled, onRejected);
+            };
+        } else if (this.results) {
+            this.results = this.results.slice(0, num);
         }
         return this;
     }
 
     skip(n) {
-        if (typeof n === 'number' && n >= 0) {
-            this.results = this.results.slice(n);
-        } else if (typeof n === 'string') {
-            const num = parseInt(n);
-            if (!isNaN(num)) this.results = this.results.slice(num);
+        const num = parseInt(n);
+        if (isNaN(num)) return this;
+
+        if (this.promise || this.queryFilter) {
+            const originalThen = this.then.bind(this);
+            this.then = (onFulfilled, onRejected) => {
+                return originalThen(res => res.slice(num)).then(onFulfilled, onRejected);
+            };
+        } else if (this.results) {
+            this.results = this.results.slice(num);
         }
         return this;
     }
@@ -111,6 +161,15 @@ export class Query {
 
     // Make it thenable so it can be awaited
     then(onFulfilled, onRejected) {
-        return Promise.resolve(this.results).then(onFulfilled, onRejected);
+        const p = this._getResults();
+        return p.then(onFulfilled, onRejected);
+    }
+
+    // Support for direct async iteration
+    async *[Symbol.asyncIterator]() {
+        const results = await this._getResults();
+        for (const item of results) {
+            yield item;
+        }
     }
 }

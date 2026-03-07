@@ -217,6 +217,9 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
                   <div className="flex items-center gap-2 p-3 bg-black/5 rounded-xl mb-4">
                     <input
+                      id="share-link-url"
+                      name="share-link-url"
+                      aria-label="Share Link URL"
                       type="text"
                       value={createdLink}
                       readOnly
@@ -304,10 +307,12 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
                   {/* Max Views */}
                   <div className="mb-6">
-                    <label className="block text-sm font-medium text-black mb-2">
+                    <label htmlFor="max-views" className="block text-sm font-medium text-black mb-2">
                       Maximum Views (Optional)
                     </label>
                     <input
+                      id="max-views"
+                      name="max-views"
                       type="number"
                       value={maxViews}
                       onChange={(e) => setMaxViews(e.target.value)}
@@ -322,12 +327,14 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                   {/* Password Protection */}
                   <div className="mb-6">
                     <div className="flex items-center justify-between mb-2">
-                      <label className="text-sm font-medium text-black flex items-center gap-2">
+                      <label htmlFor="use-password" className="text-sm font-medium text-black flex items-center gap-2">
                         <Lock className="w-4 h-4" />
                         Password Protection
                       </label>
                       <label className="relative inline-flex items-center cursor-pointer">
                         <input
+                          id="use-password"
+                          name="use-password"
                           type="checkbox"
                           checked={usePassword}
                           onChange={(e) => setUsePassword(e.target.checked)}
@@ -338,6 +345,9 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                     </div>
                     {usePassword && (
                       <input
+                        id="password-input"
+                        name="password-input"
+                        aria-label="Password input"
                         type="password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
@@ -350,12 +360,14 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                   {/* Identity Protection (ZK Proofs) */}
                   <div className="mb-6">
                     <div className="flex items-center justify-between mb-2">
-                      <label className="text-sm font-medium text-black flex items-center gap-2">
+                      <label htmlFor="use-zk" className="text-sm font-medium text-black flex items-center gap-2">
                         <Fingerprint className="w-4 h-4" />
                         Identity Protection (ZK)
                       </label>
                       <label className="relative inline-flex items-center cursor-pointer">
                         <input
+                          id="use-zk"
+                          name="use-zk"
                           type="checkbox"
                           checked={useZK}
                           onChange={(e) => setUseZK(e.target.checked)}
@@ -367,6 +379,9 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                     {useZK && (
                       <div className="space-y-3">
                         <input
+                          id="zk-identity"
+                          name="zk-identity"
+                          aria-label="Secret Identity Key"
                           type="text"
                           value={zkIdentity}
                           onChange={(e) => setZkIdentity(e.target.value)}

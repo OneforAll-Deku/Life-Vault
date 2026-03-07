@@ -428,6 +428,9 @@ const QuestDetail: React.FC = () => {
                                 </div>
 
                                 <input
+                                    id="photo-upload"
+                                    name="photo-upload"
+                                    aria-label="Upload photo"
                                     ref={fileInputRef}
                                     type="file"
                                     accept="image/*"

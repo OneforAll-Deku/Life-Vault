@@ -1,66 +1,48 @@
-import fs from 'fs';
-import path from 'path';
-import pineconeService from '../services/pineconeService.js';
-import { matchesQuery } from '../utils/queryHelper.js';
-
-
-const DATA_FILE = path.join(process.cwd(), 'data', 'memories.json');
-
-// Ensure data folder and file exist
-if (!fs.existsSync(path.dirname(DATA_FILE))) {
-  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-}
-if (!fs.existsSync(DATA_FILE)) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify([]));
-}
+import supabaseService from '../services/supabaseService.js';
+import { Query } from '../utils/queryHelper.js';
+import { applyUpdate } from '../utils/modelHelper.js';
 
 class Memory {
   constructor(data) {
     Object.assign(this, data);
-    this._id = data._id || `mem_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-    this.userId = data.userId;
+    this._id = data._id || data.id || `mem_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    this.id = this._id;
+    this.userId = data.userId || data.user_id;
     this.title = data.title;
     this.description = data.description || '';
     this.category = data.category || 'other';
-    this.ipfsHash = data.ipfsHash;
-    this.ipfsUrl = data.ipfsUrl;
-    this.txHash = data.txHash || null;
-    this.blockNumber = data.blockNumber || null;
-    this.isOnChain = data.isOnChain || false;
-    this.fileType = data.fileType;
-    this.fileSize = data.fileSize;
-    this.fileName = data.fileName;
-    this.isCapsule = data.isCapsule || false;
-    this.releaseTimestamp = data.releaseTimestamp || null;
-    this.beneficiaryAddress = data.beneficiaryAddress || null;
-    this.isClaimed = data.isClaimed || false;
-    this.isEncrypted = data.isEncrypted ?? true;
-    this.encryptionMethod = data.encryptionMethod || 'AES-256-GCM';
-    this.sharedWith = data.sharedWith || [];
-    this.beneficiaries = data.beneficiaries || [];
-    this.createdAt = data.createdAt || new Date();
-    this.updatedAt = data.updatedAt || new Date();
+    this.ipfsHash = data.ipfsHash || data.ipfs_hash;
+    this.ipfsUrl = data.ipfsUrl || data.ipfs_url;
+    this.txHash = data.txHash || data.tx_hash || null;
+    this.network = data.network || 'devnet';
+    this.blockNumber = data.blockNumber || data.block_number || null;
+    this.isOnChain = data.isOnChain || data.is_on_chain || false;
+    this.fileType = data.fileType || data.file_type;
+    this.fileSize = data.fileSize || data.file_size;
+    this.fileName = data.fileName || data.file_name;
+    this.isCapsule = data.isCapsule || data.is_capsule || false;
+    this.releaseTimestamp = data.releaseTimestamp || data.release_timestamp || null;
+    this.beneficiaryAddress = data.beneficiaryAddress || data.beneficiary_address || null;
+    this.isClaimed = data.isClaimed || data.is_claimed || false;
+    this.isEncrypted = data.isEncrypted ?? data.is_encrypted ?? true;
+    this.encryptionMethod = data.encryptionMethod || data.encryption_method || 'AES-256-GCM';
+    this.sharedWith = data.sharedWith || data.shared_with || [];
+    this.beneficiaries = data.beneficiaries || data.beneficiaries || [];
+    this.createdAt = data.createdAt || data.created_at || new Date();
+    this.updatedAt = data.updatedAt || data.updated_at || new Date();
+    this.embedding = data.embedding || null;
   }
 
-  static async find(query = {}) {
-    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    let filteredItems = items.filter(item => matchesQuery(item, query));
+  static find(query = {}) {
+    const dbQuery = {};
+    if (query.userId) dbQuery.user_id = query.userId;
+    if (query.category) dbQuery.category = query.category;
+    if (query.isCapsule !== undefined) dbQuery.is_capsule = query.isCapsule;
+    if (query.id) dbQuery.id = query.id;
+    if (query._id) dbQuery.id = query._id;
 
-    // Fallback if no items found and we have a userId
-    if (filteredItems.length === 0 && query.userId && typeof query.userId === 'string') {
-      console.log(`🔍 Memories for ${query.userId} not in local JSON. checking Pinecone...`);
-      const pineconeItems = await pineconeService.listRecords(query.userId, 'memories');
-      if (pineconeItems && pineconeItems.length > 0) {
-        // Rehydrate locally
-        for (const item of pineconeItems) {
-          const memory = new Memory(item);
-          await memory.save({ skipPinecone: true });
-        }
-        return pineconeItems.map(item => new Memory(item));
-      }
-    }
-
-    return filteredItems.map(item => new Memory(item));
+    const promise = supabaseService.find('memories', dbQuery).then(data => data.map(item => new Memory(item)));
+    return new Query(promise, query);
   }
 
   static async findOne(query) {
@@ -68,103 +50,87 @@ class Memory {
     return items.length > 0 ? items[0] : null;
   }
 
-  toObject() {
-    return { ...this };
-  }
-
-  populate() { return this; }
-  sort() { return this; }
-  limit() { return this; }
-  skip() { return this; }
-  select() { return this; }
-
   static async findById(id) {
-    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    let item = items.find(i => i._id === id);
-
-    if (!item) {
-      console.log(`🔍 Memory ${id} not in local JSON. Checking Pinecone...`);
-      const pineconeRecord = await pineconeService.getRecord(id, 'memories');
-      if (pineconeRecord) {
-        item = pineconeRecord;
-        const memory = new Memory(item);
-        await memory.save({ skipPinecone: true });
-        return memory;
-      }
-    }
-
-    return item ? new Memory(item) : null;
+    const data = await supabaseService.getRecord(id, 'memories');
+    return data ? new Memory(data) : null;
   }
 
   async save(options = {}) {
-    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
     this.updatedAt = new Date();
-    const index = items.findIndex(i => i._id === this._id);
-    if (index !== -1) {
-      items[index] = { ...this };
-    } else {
-      items.push({ ...this });
-    }
-    fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
+    const dataToSave = {
+      id: this.id || this._id,
+      user_id: this.userId,
+      title: this.title,
+      description: this.description,
+      category: this.category,
+      ipfs_hash: this.ipfsHash,
+      ipfs_url: this.ipfsUrl,
+      tx_hash: this.txHash,
+      network: this.network,
+      block_number: this.blockNumber,
+      is_on_chain: this.isOnChain,
+      file_type: this.fileType,
+      file_size: this.fileSize,
+      file_name: this.fileName,
+      is_capsule: this.isCapsule,
+      release_timestamp: this.releaseTimestamp,
+      beneficiary_address: this.beneficiaryAddress,
+      is_claimed: this.isClaimed,
+      is_encrypted: this.isEncrypted,
+      encryption_method: this.encryptionMethod,
+      shared_with: this.sharedWith,
+      beneficiaries: this.beneficiaries,
+      embedding: this.embedding,
+      created_at: this.createdAt,
+      updated_at: this.updatedAt
+    };
 
-    // Sync to Pinecone
-    if (!options.skipPinecone) {
-      await pineconeService.upsertMemory(this);
-    }
-
+    await supabaseService.upsert(dataToSave.id, dataToSave, 'memories');
     return this;
   }
 
-  static async create(data) {
-    const memory = new Memory(data);
-    await memory.save();
-    return memory;
-  }
-
-  static async findOneAndUpdate(query, update, options = {}) {
-    const item = await this.findOne(query);
-    if (item) {
-      const dataToSet = update.$set || update;
-      Object.assign(item, dataToSet);
-      await item.save();
-      return item;
-    }
-    return null;
-  }
-
-  static async findByIdAndUpdate(id, update) {
-    return this.findOneAndUpdate({ _id: id }, update);
+  static async semanticSearch(embedding, userId, limit = 5) {
+    const results = await supabaseService.semanticSearch(embedding, userId, limit);
+    return results.map(res => ({
+      ...res.metadata,
+      score: res.score
+    }));
   }
 
   static async deleteOne(query) {
-    const item = await this.findOne(query);
-    if (item) {
-      const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-      const filtered = items.filter(i => i._id !== item._id);
-      fs.writeFileSync(DATA_FILE, JSON.stringify(filtered, null, 2));
-
-      // Also delete from Pinecone
-      await pineconeService.deleteRecord(item._id, 'memories');
+    const memory = await this.findOne(query);
+    if (memory) {
+      await supabaseService.deleteRecord(memory.id || memory._id, 'memories');
       return { deletedCount: 1 };
     }
     return { deletedCount: 0 };
   }
 
-  static async deleteMany(query) {
-    const items = await this.find(query);
-    let deletedCount = 0;
-    for (const item of items) {
-      await this.deleteOne({ _id: item._id });
-      deletedCount++;
+  static async findOneAndDelete(query) {
+    const memory = await this.findOne(query);
+    if (memory) {
+      await supabaseService.deleteRecord(memory.id || memory._id, 'memories');
+      return memory;
     }
-    return { deletedCount };
+    return null;
   }
 
-  static async findOneAndDelete(query) {
-    const item = await this.findOne(query);
-    if (item) {
-      await this.deleteOne({ _id: item._id });
-      return item;
+  static async findByIdAndUpdate(id, update) {
+    const memory = await this.findById(id);
+    if (memory) {
+      applyUpdate(memory, update);
+      await memory.save();
+      return memory;
+    }
+    return null;
+  }
+
+  static async findOneAndUpdate(query, update, options = {}) {
+    const memory = await this.findOne(query);
+    if (memory) {
+      applyUpdate(memory, update);
+      await memory.save();
+      return memory;
     }
     return null;
   }
@@ -172,20 +138,20 @@ class Memory {
   static async updateMany(query, update) {
     const items = await this.find(query);
     let modifiedCount = 0;
-    const dataToSet = update.$set || update;
-
     for (const item of items) {
-      Object.assign(item, dataToSet);
+      applyUpdate(item, update);
       await item.save();
       modifiedCount++;
     }
     return { modifiedCount };
   }
 
-  static async countDocuments(query = {}) {
-    const items = await this.find(query);
-    return items.length;
-  }
+  toObject() { return { ...this }; }
+  populate() { return this; }
+  sort() { return this; }
+  limit() { return this; }
+  skip() { return this; }
+  select() { return this; }
 }
 
 export default Memory;

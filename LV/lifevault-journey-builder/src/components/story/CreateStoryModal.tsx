@@ -355,6 +355,9 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
               onClick={() => fileInputRef.current?.click()}
             >
               <input
+                id="story-file"
+                name="story-file"
+                aria-label="Upload story photo"
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
@@ -397,10 +400,12 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
 
           {/* Title */}
           <div>
-            <label className="block text-sm font-medium text-black mb-2">
+            <label htmlFor="story-title" className="block text-sm font-medium text-black mb-2">
               Story title <span className="text-red-500">*</span>
             </label>
             <input
+              id="story-title"
+              name="story-title"
               className="w-full px-4 py-3 border border-black/10 rounded-lg
                          focus:outline-none focus:ring-2 focus:ring-black/20"
               value={title}
@@ -412,10 +417,12 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-black mb-2">
+            <label htmlFor="story-description" className="block text-sm font-medium text-black mb-2">
               Description
             </label>
             <textarea
+              id="story-description"
+              name="story-description"
               className="w-full px-4 py-3 border border-black/10 rounded-lg
                          focus:outline-none focus:ring-2 focus:ring-black/20 resize-none"
               value={description}
@@ -428,10 +435,12 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
 
           {/* Recipient email */}
           <div>
-            <label className="block text-sm font-medium text-black mb-2">
+            <label htmlFor="story-recipient" className="block text-sm font-medium text-black mb-2">
               Recipient email (optional)
             </label>
             <input
+              id="story-recipient"
+              name="story-recipient"
               className="w-full px-4 py-3 border border-black/10 rounded-lg
                          focus:outline-none focus:ring-2 focus:ring-black/20"
               value={recipientEmail}
@@ -498,13 +507,15 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Time lock */}
             <div className="p-4 bg-gray-50 rounded-lg border border-black/5">
-              <div className="flex items-center gap-2 mb-2">
+              <label htmlFor="time-lock" className="flex items-center gap-2 mb-2 cursor-pointer">
                 <Clock className="w-4 h-4 text-orange-500" />
                 <p className="text-sm font-semibold text-black">
                   Unlock date & time
                 </p>
-              </div>
+              </label>
               <input
+                id="time-lock"
+                name="time-lock"
                 type="datetime-local"
                 className="w-full px-3 py-2 border border-black/10 rounded-lg
                            focus:outline-none focus:ring-2 focus:ring-black/20 text-sm"
@@ -519,13 +530,15 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
 
             {/* Geo lock */}
             <div className="p-4 bg-gray-50 rounded-lg border border-black/5">
-              <div className="flex items-center gap-2 mb-2">
+              <label htmlFor="geo-lock" className="flex items-center gap-2 mb-2">
                 <MapPin className="w-4 h-4 text-blue-500" />
                 <p className="text-sm font-semibold text-black">
                   Geo-lock radius
                 </p>
-              </div>
+              </label>
               <input
+                id="geo-lock"
+                name="geo-lock"
                 type="number"
                 min={10}
                 max={5000}
@@ -564,10 +577,12 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
 
           {/* Location name */}
           <div>
-            <label className="block text-sm font-medium text-black mb-2">
+            <label htmlFor="location-name" className="block text-sm font-medium text-black mb-2">
               Location name
             </label>
             <input
+              id="location-name"
+              name="location-name"
               className="w-full px-4 py-3 border border-black/10 rounded-lg
                          focus:outline-none focus:ring-2 focus:ring-black/20"
               value={locationName}
@@ -579,10 +594,12 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
 
           {/* Note */}
           <div>
-            <label className="block text-sm font-medium text-black mb-2">
+            <label htmlFor="story-note" className="block text-sm font-medium text-black mb-2">
               Note (shown after unlock)
             </label>
             <input
+              id="story-note"
+              name="story-note"
               className="w-full px-4 py-3 border border-black/10 rounded-lg
                          focus:outline-none focus:ring-2 focus:ring-black/20"
               value={note}

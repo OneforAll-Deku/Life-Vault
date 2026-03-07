@@ -91,7 +91,7 @@ export function WhySection() {
                 <div className="absolute top-1/2 -left-6 md:-left-8 -translate-y-1/2 w-12 h-12 md:w-16 md:h-16 rounded-full bg-[#09090b] border border-white/10 flex items-center justify-center shadow-2xl rotate-90 md:rotate-0 z-20 group-hover:border-white/30 transition-all duration-700">
                   <ArrowRight className="w-5 h-5 text-white/40 group-hover:text-white transition-colors" />
                 </div>
-                <span className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.3em] mb-4">The Life Vault Solution</span>
+                <span className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.3em] mb-4">The Block Pix Solution</span>
                 <h3 className="text-2xl md:text-3xl font-black text-white mb-5 tracking-tight group-hover:scale-[1.02] origin-left transition-transform duration-700">{item.solution}</h3>
                 <p className="text-lg text-white/70 leading-relaxed font-light group-hover:text-white/90 transition-colors">{item.solutionDesc}</p>
 

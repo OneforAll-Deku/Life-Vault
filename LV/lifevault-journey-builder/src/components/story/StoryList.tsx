@@ -115,8 +115,11 @@ export const StoryList: React.FC = () => {
       {/* Search by code */}
       <div className="flex gap-2">
         <div className="relative flex-1">
+          <label htmlFor="search-code-input" className="sr-only">Enter story code</label>
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-black/30" />
           <input
+            id="search-code-input"
+            name="search-code-input"
             className="w-full pl-9 pr-4 py-2.5 border border-black/10 rounded-lg
                        focus:outline-none focus:ring-2 focus:ring-black/20 text-sm"
             placeholder="Enter story code to access..."

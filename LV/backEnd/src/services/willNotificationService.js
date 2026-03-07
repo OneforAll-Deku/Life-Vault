@@ -52,7 +52,7 @@ class WillNotificationService {
 
     const from = process.env.EMAIL_FROM || process.env.SMTP_USER;
     const owner = await User.findById(will.userId);
-    const ownerName = owner?.name || 'A LifeVault user';
+    const ownerName = owner?.name || 'A Block Pix user';
     const results = [];
 
     for (const beneficiary of will.beneficiaries) {
@@ -90,12 +90,12 @@ class WillNotificationService {
     const configs = {
       REMINDER: {
         emoji: '🔔',
-        subject: `LifeVault Check-In Reminder — ${daysLeft} days remaining`,
+        subject: `Block Pix Check-In Reminder — ${daysLeft} days remaining`,
         urgency: '',
         color: '#6366f1',
         borderColor: '#e0e7ff',
         bgColor: '#eef2ff',
-        message: `You haven't checked in to LifeVault for a while. Your Digital Will <strong>"${will.title}"</strong> will be automatically executed in <strong>${daysLeft} days</strong> if you don't check in.`,
+        message: `You haven't checked in to Block Pix for a while. Your Digital Will <strong>"${will.title}"</strong> will be automatically executed in <strong>${daysLeft} days</strong> if you don't check in.`,
       },
       URGENT: {
         emoji: '⚠️',
@@ -124,7 +124,7 @@ class WillNotificationService {
         
         <div style="background: ${c.color}; padding: 24px; border-radius: 16px 16px 0 0; text-align: center;">
           <h1 style="margin: 0; color: #fff; font-size: 22px;">
-            ${c.emoji} ${c.urgency}LifeVault Check-In Required
+            ${c.emoji} ${c.urgency}Block Pix Check-In Required
           </h1>
         </div>
 
@@ -151,7 +151,7 @@ class WillNotificationService {
 
           <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
           <p style="margin: 0; font-size: 12px; color: #9ca3af; text-align: center;">
-            — LifeVault • Your life, secured on the chain.
+            — Block Pix • Your life, secured on the chain.
           </p>
         </div>
       </div>
@@ -161,7 +161,7 @@ class WillNotificationService {
   }
 
   _buildExecutionTemplate(will, ownerName, beneficiary) {
-    const subject = `LifeVault — You have received digital memories from ${ownerName}`;
+    const subject = `Block Pix — You have received digital memories from ${ownerName}`;
 
     const memoriesCount = (beneficiary.assignedMemories?.length || 0);
     const categoriesText = beneficiary.assignedCategories?.length
@@ -214,7 +214,7 @@ class WillNotificationService {
 
           <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
           <p style="margin: 0; font-size: 12px; color: #9ca3af; text-align: center;">
-            — LifeVault • Your life, secured on the chain.
+            — Block Pix • Your life, secured on the chain.
           </p>
         </div>
       </div>
@@ -251,12 +251,12 @@ class WillNotificationService {
   }
 
   _buildInvitationTemplate(will, ownerName, beneficiary, confirmUrl) {
-    const subject = `LifeVault — ${ownerName} added you as a beneficiary`;
+    const subject = `Block Pix — ${ownerName} added you as a beneficiary`;
 
     const html = `
       <div style="font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; max-width: 560px; margin: 0 auto; line-height: 1.6;">
         <div style="background: #6366f1; padding: 24px; border-radius: 16px 16px 0 0; text-align: center;">
-          <h1 style="margin: 0; color: #fff; font-size: 20px;">💜 LifeVault Invitation</h1>
+          <h1 style="margin: 0; color: #fff; font-size: 20px;">💜 Block Pix Invitation</h1>
         </div>
         <div style="padding: 28px 24px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 16px 16px; background: #fff;">
           <p style="margin: 0 0 16px; font-size: 15px; color: #374151;">Hi ${beneficiary.name},</p>
@@ -271,7 +271,7 @@ class WillNotificationService {
           </div>
           <p style="margin: 0; font-size: 12px; color: #9ca3af; text-align: center;">If you didn't expect this, you can safely ignore this email.</p>
           <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-          <p style="margin: 0; font-size: 12px; color: #9ca3af; text-align: center;">— LifeVault Team</p>
+          <p style="margin: 0; font-size: 12px; color: #9ca3af; text-align: center;">— Block Pix Team</p>
         </div>
       </div>
     `;

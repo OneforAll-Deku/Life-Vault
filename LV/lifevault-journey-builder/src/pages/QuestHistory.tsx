@@ -113,6 +113,9 @@ const QuestHistory: React.FC = () => {
                     <div className="relative w-full md:max-w-md">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                         <input
+                            id="history-search"
+                            name="history-search"
+                            aria-label="Search records"
                             type="text"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}

@@ -651,6 +651,9 @@ const Stories: React.FC = () => {
 
               <div className="flex-1 flex gap-3 w-full">
                 <input
+                  id="search-code"
+                  name="search-code"
+                  aria-label="Enter 8-digit identification"
                   className="flex-1 px-6 py-4 rounded-2xl text-sm font-black tracking-[0.2em] uppercase focus:outline-none transition-all placeholder:text-slate-600 bg-slate-100 border border-slate-200 focus:bg-white focus:ring-4 focus:ring-rose-500/10"
                   placeholder="Enter 8-digit identification..."
                   value={searchCode}
@@ -706,6 +709,9 @@ const Stories: React.FC = () => {
             <div className="relative flex-1 lg:min-w-[300px]">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               <input
+                id="search-query"
+                name="search-query"
+                aria-label="Filter index"
                 className="w-full pl-12 pr-4 py-3 rounded-2xl text-xs font-bold focus:outline-none transition-all bg-slate-100 border border-slate-200 focus:bg-white"
                 placeholder="Filter index..."
                 value={searchQuery}
@@ -713,6 +719,9 @@ const Stories: React.FC = () => {
               />
             </div>
             <select
+              id="status-filter"
+              name="status-filter"
+              aria-label="Filter status"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest focus:outline-none transition-all appearance-none cursor-pointer bg-slate-100 border border-slate-200"

@@ -104,10 +104,10 @@ if (process.env.NODE_ENV === 'production') {
 app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: '🔐 Life Vault API is running on Aptos & Pinecone DB!',
+    message: '🔐 Block Pix API is running on Aptos & Supabase!',
     version: '3.0.0',
     blockchains: ['Aptos'],
-    database: 'Pinecone Vector DB',
+    database: 'Supabase PostgreSQL & Vector DB',
     networks: {
       aptos: process.env.APTOS_NETWORK || 'testnet'
     },
@@ -268,9 +268,9 @@ process.on('uncaughtException', (err) => {
 });
 
 // ==========================================
-// BACKGROUND JOBS (DISABLED - NEEDS MIGRATION)
+// BACKGROUND JOBS
 // ==========================================
 
-// startDeadManSwitchCron();
+startDeadManSwitchCron();
 
 export default app;

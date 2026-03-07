@@ -46,6 +46,7 @@ interface WalletContextType {
   bitcoinAccount: { address: string; network: string } | null;
   aptosClient: Aptos;
   currentModuleAddress: string;
+  selectedNetwork: string;
   switchNetwork: (targetNetwork: string) => Promise<boolean>;
 }
 
@@ -85,7 +86,8 @@ const WalletContextProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     network,
     signMessage: aptosSignMessage,
     signAndSubmitTransaction: aptosSignAndSubmitTransaction,
-  } = useAptosWallet();
+    changeNetwork: aptosChangeNetwork,
+  } = useAptosWallet() as any;
 
   const { toast } = useToast();
   const [petraChecked, setPetraChecked] = useState(false);
@@ -94,6 +96,7 @@ const WalletContextProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [bitcoinAccount, setBitcoinAccount] = useState<{ address: string; network: string } | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [fetchingBalance, setFetchingBalance] = useState(false);
+  const [selectedNetwork, setSelectedNetwork] = useState<string>(import.meta.env.VITE_APTOS_NETWORK?.toLowerCase() || 'devnet');
 
   // Load burner from localStorage on mount
   useEffect(() => {
@@ -125,48 +128,38 @@ const WalletContextProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   // Setup Aptos Client
   // Dynamically uses the network from the connected wallet or environment variables
   const aptosClient = useMemo(() => {
-    // 1. Check connected wallet network first
-    const walletNetwork = network?.name?.toLowerCase() || '';
-
-    // 2. Fallback to environment variable
-    const envNetwork = import.meta.env.VITE_APTOS_NETWORK?.toLowerCase() || '';
-
-    const activeNetworkString = walletNetwork || envNetwork || 'devnet';
+    // 1. Prioritize user-selected network from UI
+    const activeNetworkString = selectedNetwork || network?.name?.toLowerCase() || import.meta.env.VITE_APTOS_NETWORK?.toLowerCase() || 'devnet';
     const chainId = network?.chainId;
 
-    console.log(`🌐 [WalletContext] Network Analysis: Wallet="${network?.name}", ChainId=${chainId}, Env=${envNetwork}, Active=${activeNetworkString}`);
+    const isMainnet = selectedNetwork ? selectedNetwork === 'mainnet' : (activeNetworkString.includes('mainnet') || chainId === 1);
+    const isTestnet = selectedNetwork ? selectedNetwork === 'testnet' : (activeNetworkString.includes('testnet') || chainId === 2);
+    const isDevnet = selectedNetwork ? selectedNetwork === 'devnet' : (!isMainnet && !isTestnet);
 
     let aptosNetwork: Network;
-    // Prioritize string matching (more descriptive) then fallback to ChainID
-    if (activeNetworkString.includes('mainnet')) {
+    if (isMainnet) {
       aptosNetwork = Network.MAINNET;
-    } else if (activeNetworkString.includes('devnet')) {
-      aptosNetwork = Network.DEVNET;
-    } else if (activeNetworkString.includes('testnet')) {
-      aptosNetwork = Network.TESTNET;
-    } else if (chainId === 1) {
-      aptosNetwork = Network.MAINNET;
-    } else if (chainId === 2) {
+    } else if (isTestnet) {
       aptosNetwork = Network.TESTNET;
     } else {
       aptosNetwork = Network.DEVNET;
     }
 
     const config = new AptosConfig({ network: aptosNetwork });
+    console.log(`🌐 [WalletContext] Aptos Client Sync: Network=${aptosNetwork}, URL=${config.fullnode}, Source=${activeNetworkString}, ChainID=${chainId}`);
     return new Aptos(config);
-  }, [network]);
+  }, [network, network?.name, network?.chainId, selectedNetwork]);
+
 
   // Map of module addresses per network
   const currentModuleAddress = useMemo(() => {
-    const walletNetwork = network?.name?.toLowerCase() || '';
-    const envNetwork = import.meta.env.VITE_APTOS_NETWORK?.toLowerCase() || '';
-    const activeNetworkString = walletNetwork || envNetwork || 'devnet';
+    const activeNetworkString = selectedNetwork || network?.name?.toLowerCase() || import.meta.env.VITE_APTOS_NETWORK?.toLowerCase() || 'devnet';
     const chainId = network?.chainId;
 
     // Logic should match aptosNetwork selection
-    const isMainnet = activeNetworkString.includes('mainnet') || chainId === 1;
-    const isDevnet = activeNetworkString.includes('devnet') || (!activeNetworkString.includes('testnet') && chainId !== 2);
-    const isTestnet = activeNetworkString.includes('testnet') || (chainId === 2 && !activeNetworkString.includes('devnet'));
+    const isMainnet = activeNetworkString.includes('mainnet') || (selectedNetwork === '' && chainId === 1);
+    const isDevnet = activeNetworkString.includes('devnet') || (selectedNetwork === '' && !activeNetworkString.includes('testnet') && chainId !== 2);
+    const isTestnet = activeNetworkString.includes('testnet') || (selectedNetwork === '' && chainId === 2 && !activeNetworkString.includes('devnet'));
 
     // Default address to use if specific is missing
     const defaultAddress = import.meta.env.VITE_APTOS_MODULE_ADDRESS || '0x547b91ee28212a3759017e89addbf0507d0e082264914855bcc2a602139b870a';
@@ -175,32 +168,75 @@ const WalletContextProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       return import.meta.env.VITE_MAINNET_MODULE_ADDRESS || defaultAddress;
     } else if (isTestnet) {
       return import.meta.env.VITE_TESTNET_MODULE_ADDRESS || defaultAddress;
+    } else if (isDevnet) {
+      return import.meta.env.VITE_DEVNET_MODULE_ADDRESS || defaultAddress;
     }
     return defaultAddress;
-  }, [network]);
+  }, [network, selectedNetwork]);
 
   const switchNetwork = useCallback(async (targetNetwork: string) => {
     try {
-      console.log(`🔄 Switching wallet to ${targetNetwork}...`);
-      if ((window as any).aptos?.changeNetwork) {
-        await (window as any).aptos.changeNetwork(targetNetwork);
-        return true;
+      console.log(`🔄 Switching selected network to ${targetNetwork}...`);
+      setSelectedNetwork(targetNetwork.toLowerCase());
+
+      if (connected) {
+        // Use the wallet adapter's changeNetwork feature if available
+        if (typeof aptosChangeNetwork === 'function') {
+          console.log(`🔄 Requesting wallet switch via adapter to ${targetNetwork}...`);
+          try {
+            await aptosChangeNetwork(targetNetwork as any);
+          } catch (e: any) {
+            console.warn("Wallet adapter changeNetwork failed:", e);
+            // Non-blocking, continue with manual advice
+          }
+        }
+        // Fallback for older Petra versions that don't support the adapter switch yet
+        else if (typeof (window as any).aptos?.changeNetwork === 'function') {
+          console.log(`🔄 Requesting wallet switch via window.aptos to ${targetNetwork}...`);
+          try {
+            await (window as any).aptos.changeNetwork(targetNetwork);
+          } catch (e: any) {
+            console.warn("window.aptos.changeNetwork failed:", e);
+          }
+        }
       }
-      return false;
+
+      toast({
+        title: "Network Switch Initiated",
+        description: (
+          <div className="space-y-1">
+            <p>App is now targeting <b>{targetNetwork.toUpperCase()}</b>.</p>
+            <p className="text-[10px] opacity-90">⚠️ Please check your <b>Petra Wallet extension</b> and ensure it is also set to <b>{targetNetwork.toUpperCase()}</b> in Settings.</p>
+          </div>
+        ),
+        className: "bg-indigo-600 text-white"
+      });
+      return true;
     } catch (err: any) {
       console.error('Failed to switch network:', err);
-      toast({ title: "Network Switch Failed", description: err.message || "Please switch your wallet manually.", variant: "destructive" });
-      return false;
+      // Even if wallet switch fails, we keep the app-side network updated to allow 
+      // the diagnostic probe to run against the new network
+      toast({
+        title: "Network Switch Information",
+        description: "App network updated. If your wallet didn't switch, please change it manually in the extension.",
+        variant: "default"
+      });
+      return true;
     }
-  }, [toast]);
+  }, [connected, toast]);
 
   // Listen for network changes in the wallet extension
   useEffect(() => {
     if (connected && (window as any).aptos?.onNetworkChange) {
       console.log('📡 [WalletContext] Registering network change listener...');
       (window as any).aptos.onNetworkChange((newNetwork: any) => {
-        console.log('🌐 [WalletContext] Wallet Network Event:', newNetwork);
-        // This will trigger a re-render because 'network' from useAptosWallet() will change
+        console.log('🌐 [WalletContext] Wallet Network Changed Event:', newNetwork);
+        if (newNetwork?.name) {
+          const name = newNetwork.name.toLowerCase();
+          if (name.includes('mainnet')) setSelectedNetwork('mainnet');
+          else if (name.includes('testnet')) setSelectedNetwork('testnet');
+          else if (name.includes('devnet')) setSelectedNetwork('devnet');
+        }
       });
     }
   }, [connected]);
@@ -234,23 +270,37 @@ const WalletContextProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     try {
       setFetchingBalance(true);
       // Get account info from resources
+      console.log(`💰 [WalletContext] Fetching balance for ${account.address} on ${aptosClient.config.network}...`);
+
       const resources = await aptosClient.getAccountAPTAmount({
         accountAddress: account.address,
       });
 
       // Amount is in Octas (10^8)
       const aptAmount = Number(resources) / 100_000_000;
+      console.log(`✅ [WalletContext] Balance detected: ${aptAmount} APT`);
       setBalance(aptAmount);
-    } catch (error) {
-      console.error('Failed to fetch balance:', error);
-      // If account doesn't exist on chain yet, it has 0 balance
-      if (error instanceof Error && error.message.includes('404')) {
+    } catch (error: any) {
+      console.warn('⚠️ [WalletContext] Failed to fetch balance:', error.message || error);
+
+      // If account doesn't exist on chain yet (404), it has 0 balance
+      // The error status can be in error.status or error.response?.status
+      const is404 = error.status === 404 ||
+        error.response?.status === 404 ||
+        (error.message && (error.message.includes('404') || error.message.includes('not found')));
+
+      if (is404) {
+        console.log('ℹ️ [WalletContext] Account not found on chain, setting balance to 0');
         setBalance(0);
+      } else {
+        // Don't clear balance on ephemeral errors to avoid UI flicker
+        // but if it's the first fetch, set to 0
+        if (balance === null) setBalance(0);
       }
     } finally {
       setFetchingBalance(false);
     }
-  }, [account, aptosClient]);
+  }, [account?.address, aptosClient, balance]);
 
   useEffect(() => {
     fetchBalance();
@@ -596,6 +646,7 @@ const WalletContextProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     bitcoinAccount,
     aptosClient,
     currentModuleAddress,
+    selectedNetwork,
     switchNetwork,
   };
 

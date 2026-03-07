@@ -1,73 +1,41 @@
-import fs from 'fs';
-import path from 'path';
 import crypto from 'crypto';
-import { matchesQuery } from '../utils/queryHelper.js';
-
-const DATA_FILE = path.join(process.cwd(), 'data', 'digitalwills.json');
-
-// Ensure data folder and file exist
-if (!fs.existsSync(path.dirname(DATA_FILE))) {
-    fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-}
-if (!fs.existsSync(DATA_FILE)) {
-    fs.writeFileSync(DATA_FILE, JSON.stringify([]));
-}
+import supabaseService from '../services/supabaseService.js';
+import { Query } from '../utils/queryHelper.js';
+import { applyUpdate } from '../utils/modelHelper.js';
 
 class DigitalWill {
     constructor(data) {
         Object.assign(this, data);
-        this._id = data._id || `will_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-        this.userId = data.userId;
+        this._id = data._id || data.id || `will_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        this.id = this._id;
+        this.userId = data.userId || data.user_id;
         this.title = data.title || 'My Digital Legacy';
         this.description = data.description || '';
         this.status = data.status || 'draft';
         this.beneficiaries = data.beneficiaries || [];
-        this.multiSig = data.multiSig || {
-            enabled: true,
-            requiredConfirmations: 2,
-            totalBeneficiaries: 0,
-            currentConfirmations: 0,
-        };
-        this.deadManSwitch = data.deadManSwitch || {
-            enabled: false,
-            inactivityMonths: 6,
-            lastCheckinAt: new Date(),
-            nextDeadline: null,
-            warningsSent: 0,
-            isTriggered: false,
-            triggeredAt: null,
-        };
-        this.notarization = data.notarization || {
-            isNotarized: false,
-            txHash: null,
-            blockNumber: null,
-            notarizedAt: null,
-            contentHash: null,
-        };
-        this.legalTemplate = data.legalTemplate || { type: 'standard' };
-        this.globalMemories = data.globalMemories || [];
-        this.executedAt = data.executedAt || null;
-        this.executionTxHash = data.executionTxHash || null;
-        this.activityLog = data.activityLog || [];
-        this.accessToken = data.accessToken || crypto.randomBytes(32).toString('hex');
-        this.createdAt = data.createdAt || new Date();
-        this.updatedAt = data.updatedAt || new Date();
+        this.multiSig = data.multiSig || data.multi_sig || { enabled: true, requiredConfirmations: 2 };
+        this.deadManSwitch = data.deadManSwitch || data.dead_man_switch || { enabled: false, inactivityMonths: 6 };
+        this.notarization = data.notarization || { isNotarized: false };
+        this.legalTemplate = data.legalTemplate || data.legal_template || { type: 'standard' };
+        this.globalMemories = data.globalMemories || data.global_memories || [];
+        this.executedAt = data.executedAt || data.executed_at || null;
+        this.executionTxHash = data.executionTxHash || data.execution_tx_hash || null;
+        this.activityLog = data.activityLog || data.activity_log || [];
+        this.accessToken = data.accessToken || data.access_token || crypto.randomBytes(32).toString('hex');
+        this.createdAt = data.createdAt || data.created_at || new Date();
+        this.updatedAt = data.updatedAt || data.updated_at || new Date();
     }
 
-    static async find(query = {}) {
-        const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-        return items.filter(item => matchesQuery(item, query)).map(item => new DigitalWill(item));
-    }
+    static find(query = {}) {
+        const dbQuery = {};
+        if (query.userId) dbQuery.user_id = query.userId;
+        if (query.status) dbQuery.status = query.status;
+        if (query.id) dbQuery.id = query.id;
+        if (query._id) dbQuery.id = query._id;
 
-    toObject() {
-        return { ...this };
+        const promise = supabaseService.find('digital_wills', dbQuery).then(data => data.map(w => new DigitalWill(w)));
+        return new Query(promise, query);
     }
-
-    populate() { return this; }
-    sort() { return this; }
-    limit() { return this; }
-    skip() { return this; }
-    select() { return this; }
 
     static async findOne(query) {
         const items = await this.find(query);
@@ -75,89 +43,78 @@ class DigitalWill {
     }
 
     static async findById(id) {
-        const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-        const item = items.find(i => i._id === id);
-        return item ? new DigitalWill(item) : null;
-    }
-
-    static async findOneAndDelete(query) {
-        const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-        const index = items.findIndex(item => {
-            for (let key in query) {
-                if (item[key] !== query[key]) return false;
-            }
-            return true;
-        });
-        if (index !== -1) {
-            const deleted = items.splice(index, 1);
-            fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
-            return new DigitalWill(deleted[0]);
-        }
-        return null;
+        const data = await supabaseService.getRecord(id, 'digital_wills');
+        return data ? new DigitalWill(data) : null;
     }
 
     async save() {
-        const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-
-        // Sync multi-sig and deadline logic
-        if (this.beneficiaries) {
-            this.multiSig.totalBeneficiaries = this.beneficiaries.length;
-            this.multiSig.currentConfirmations = this.beneficiaries.filter(b => b.hasConfirmed).length;
-        }
-        if (this.deadManSwitch.enabled && this.deadManSwitch.lastCheckinAt) {
-            const deadline = new Date(this.deadManSwitch.lastCheckinAt);
-            deadline.setMonth(deadline.getMonth() + this.deadManSwitch.inactivityMonths);
-            this.deadManSwitch.nextDeadline = deadline;
-        }
-
         this.updatedAt = new Date();
-        const index = items.findIndex(i => i._id === this._id);
-        if (index !== -1) {
-            items[index] = { ...this };
-        } else {
-            items.push({ ...this });
+
+        // Calculate nextDeadline if deadManSwitch is enabled
+        if (this.deadManSwitch && this.deadManSwitch.enabled) {
+            const lastCheckin = this.deadManSwitch.lastCheckinAt || this.createdAt || new Date();
+            const months = this.deadManSwitch.inactivityMonths || 12; // Default to 12 if not set
+            const deadline = new Date(lastCheckin);
+            deadline.setMonth(deadline.getMonth() + months);
+            this.deadManSwitch.nextDeadline = deadline;
+            this.deadManSwitch.isTriggered = this.deadManSwitch.isTriggered || false;
+            this.deadManSwitch.warningsSent = this.deadManSwitch.warningsSent || 0;
         }
-        fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
+
+        const dataToSave = {
+            id: this.id || this._id,
+            user_id: this.userId,
+            title: this.title,
+            description: this.description,
+            status: this.status,
+            beneficiaries: this.beneficiaries,
+            multi_sig: this.multiSig,
+            dead_man_switch: this.deadManSwitch,
+            notarization: this.notarization,
+            legal_template: this.legalTemplate,
+            global_memories: this.globalMemories,
+            executed_at: this.executedAt,
+            execution_tx_hash: this.executionTxHash,
+            activity_log: this.activityLog,
+            access_token: this.accessToken,
+            created_at: this.createdAt,
+            updated_at: this.updatedAt
+        };
+
+        await supabaseService.upsert(dataToSave.id, dataToSave, 'digital_wills');
         return this;
     }
 
-    // Methods
+    // Business Logic Methods
     generateContentHash() {
         const content = JSON.stringify({
-            title: this.title,
-            description: this.description,
-            beneficiaries: this.beneficiaries.map(b => ({
-                name: b.name,
-                email: b.email,
-                walletAddress: b.walletAddress,
-                assignedMemories: b.assignedMemories,
-                assignedCategories: b.assignedCategories,
-            })),
+            beneficiaries: this.beneficiaries,
+            memories: this.globalMemories,
             multiSig: this.multiSig,
-            deadManSwitch: {
-                enabled: this.deadManSwitch.enabled,
-                inactivityMonths: this.deadManSwitch.inactivityMonths,
-            },
-            createdAt: this.createdAt,
+            deadManSwitch: this.deadManSwitch
         });
         return crypto.createHash('sha256').update(content).digest('hex');
     }
 
-    async checkin() {
-        this.deadManSwitch.lastCheckinAt = new Date();
-        this.deadManSwitch.warningsSent = 0;
-        this.deadManSwitch.isTriggered = false;
-        this.activityLog.push({
-            action: 'dead_man_switch_reset',
-            details: 'Owner checked in',
-            timestamp: new Date()
-        });
-        return this.save();
+    checkin() {
+        if (this.deadManSwitch && this.deadManSwitch.enabled) {
+            this.deadManSwitch.lastCheckinAt = new Date();
+            this.logActivity('check-in', this.userId, { method: 'dashboard' });
+            return this.save();
+        }
     }
 
     isUnlockable() {
-        if (!this.multiSig.enabled) return true;
-        return (this.multiSig.currentConfirmations || 0) >= (this.multiSig.requiredConfirmations || 1);
+        const currentConfirmations = (this.beneficiaries || []).filter(b => b.hasConfirmed).length;
+        this.multiSig = this.multiSig || { enabled: false, requiredConfirmations: 0 };
+        this.multiSig.currentConfirmations = currentConfirmations;
+
+        if (!this.multiSig.enabled) {
+            return this.status === 'active';
+        }
+
+        const requiredConfirmations = this.multiSig.requiredConfirmations || 1;
+        return currentConfirmations >= requiredConfirmations && this.status === 'active';
     }
 
     logActivity(action, userId, details, txHash = null) {
@@ -170,86 +127,54 @@ class DigitalWill {
         });
     }
 
-    // Sub-schema helper for beneficiaries.id()
-    get beneficiary() {
-        return {
-            id: (bid) => this.beneficiaries.find(b => b._id === bid || b.id === bid)
-        }
-    }
-
-
-
     static async findOneAndUpdate(query, update, options = {}) {
         const item = await this.findOne(query);
         if (item) {
-            const dataToSet = update.$set || update;
-            Object.assign(item, dataToSet);
+            applyUpdate(item, update);
             await item.save();
-            return item;
-        }
-        return null;
-    }
-
-    static async findByIdAndUpdate(id, update) {
-        const item = await this.findById(id);
-        if (item) {
-            const dataToSet = update.$set || update;
-            Object.assign(item, dataToSet);
-            await item.save();
-            return item;
-        }
-        return null;
-    }
-
-    static async deleteOne(query) {
-        let items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-        const initialLength = items.length;
-        items = items.filter(item => !matchesQuery(item, query));
-        if (items.length !== initialLength) {
-            fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
-            return { deletedCount: initialLength - items.length };
-        }
-        return { deletedCount: 0 };
-    }
-
-    static async findOneAndDelete(query) {
-        const item = await this.findOne(query);
-        if (item) {
-            await this.deleteOne({ _id: item._id });
             return item;
         }
         return null;
     }
 
     static async updateMany(query, update) {
-        const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+        const items = await this.find(query);
         let modifiedCount = 0;
-        const dataToSet = update.$set || update;
-
-        const updatedItems = items.map(item => {
-            if (matchesQuery(item, query)) {
-                modifiedCount++;
-                return { ...item, ...dataToSet, updatedAt: new Date() };
-            }
-            return item;
-        });
-
-        if (modifiedCount > 0) {
-            fs.writeFileSync(DATA_FILE, JSON.stringify(updatedItems, null, 2));
+        for (const item of items) {
+            applyUpdate(item, update);
+            await item.save();
+            modifiedCount++;
         }
         return { modifiedCount };
     }
 
-    static async countDocuments(query = {}) {
-        const items = await this.find(query);
-        return items.length;
+    static async findOneAndDelete(query) {
+        const item = await this.findOne(query);
+        if (item) {
+            await supabaseService.deleteRecord(item.id || item._id, 'digital_wills');
+            return item;
+        }
+        return null;
+    }
+
+    static async findByIdAndUpdate(id, update) {
+        return this.findOneAndUpdate({ id: id }, update);
+    }
+
+    static async deleteOne(query) {
+        const item = await this.findOne(query);
+        if (item) {
+            await supabaseService.deleteRecord(item.id || item._id, 'digital_wills');
+            return { deletedCount: 1 };
+        }
+        return { deletedCount: 0 };
     }
 
     static async deleteMany(query) {
         const items = await this.find(query);
         let deletedCount = 0;
         for (const item of items) {
-            await this.deleteOne({ _id: item._id });
+            await this.deleteOne({ id: item.id || item._id });
             deletedCount++;
         }
         return { deletedCount };
@@ -260,6 +185,13 @@ class DigitalWill {
         await will.save();
         return will;
     }
+
+    toObject() { return { ...this }; }
+    populate() { return this; }
+    sort() { return this; }
+    limit() { return this; }
+    skip() { return this; }
+    select() { return this; }
 }
 
 export default DigitalWill;

@@ -1,48 +1,33 @@
-import fs from 'fs';
-import path from 'path';
-import crypto from 'crypto';
-import { matchesQuery } from '../utils/queryHelper.js';
-
-const DATA_FILE = path.join(process.cwd(), 'data', 'sharedlinks.json');
-
-// Ensure data folder and file exist
-if (!fs.existsSync(path.dirname(DATA_FILE))) {
-  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-}
-if (!fs.existsSync(DATA_FILE)) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify([]));
-}
+import supabaseService from '../services/supabaseService.js';
+import { Query } from '../utils/queryHelper.js';
+import { applyUpdate } from '../utils/modelHelper.js';
 
 class SharedLink {
   constructor(data) {
     Object.assign(this, data);
-    this._id = data._id || `link_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-    this.memoryId = data.memoryId;
-    this.userId = data.userId;
-    this.token = data.token || SharedLink.generateToken();
-    this.shortCode = data.shortCode || SharedLink.generateShortCode();
-    this.expiresAt = data.expiresAt || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    this.accessType = data.accessType || 'view';
-    this.password = data.password || null;
-    this.isPasswordProtected = data.isPasswordProtected || false;
-    this.isZKProtected = data.isZKProtected || false;
-    this.identityCommitment = data.identityCommitment || null;
-    this.zkChallenge = data.zkChallenge || null;
-    this.encryptedData = data.encryptedData || null;
-    this.maxViews = data.maxViews || null;
-    this.viewCount = data.viewCount || 0;
-    this.isActive = data.isActive ?? true;
-    this.isRevoked = data.isRevoked || false;
-    this.revokedAt = data.revokedAt || null;
-    this.createdAt = data.createdAt || new Date();
-    this.lastAccessedAt = data.lastAccessedAt || null;
-    this.accessLog = data.accessLog || [];
-    this.updatedAt = data.updatedAt || new Date();
+    this._id = data._id || data.id || `sl_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    this.id = this._id;
+    this.memoryId = data.memoryId || data.memory_id;
+    this.creatorId = data.creatorId || data.creator_id;
+    this.accessToken = data.accessToken || data.access_token;
+    this.expiresAt = data.expiresAt || data.expires_at || null;
+    this.maxUses = data.maxUses || data.max_uses || null;
+    this.useCount = data.useCount || data.use_count || 0;
+    this.isActive = data.isActive ?? data.is_active ?? true;
+    this.createdAt = data.createdAt || data.created_at || new Date();
+    this.updatedAt = data.updatedAt || data.updated_at || new Date();
   }
 
-  static async find(query = {}) {
-    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    return items.filter(item => matchesQuery(item, query)).map(item => new SharedLink(item));
+  static find(query = {}) {
+    const dbQuery = {};
+    if (query.memoryId) dbQuery.memory_id = query.memoryId;
+    if (query.creatorId) dbQuery.creator_id = query.creatorId;
+    if (query.accessToken) dbQuery.access_token = query.accessToken;
+    if (query.id) dbQuery.id = query.id;
+    if (query._id) dbQuery.id = query._id;
+
+    const promise = supabaseService.find('shared_links', dbQuery).then(data => data.map(sl => new SharedLink(sl)));
+    return new Query(promise, query);
   }
 
   static async findOne(query) {
@@ -50,147 +35,68 @@ class SharedLink {
     return items.length > 0 ? items[0] : null;
   }
 
-  static async findById(id) {
-    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    const item = items.find(i => i._id === id);
-    return item ? new SharedLink(item) : null;
+  async save() {
+    this.updatedAt = new Date();
+    const dataToSave = {
+      id: this.id || this._id,
+      memory_id: this.memoryId,
+      creator_id: this.creatorId,
+      access_token: this.accessToken,
+      expires_at: this.expiresAt,
+      max_uses: this.maxUses,
+      use_count: this.useCount,
+      is_active: this.isActive,
+      created_at: this.createdAt,
+      updated_at: this.updatedAt
+    };
+
+    await supabaseService.upsert(dataToSave.id, dataToSave, 'shared_links');
+    return this;
   }
 
   static async findOneAndUpdate(query, update, options = {}) {
     const item = await this.findOne(query);
     if (item) {
-      const dataToSet = update.$set || update;
-      Object.assign(item, dataToSet);
+      applyUpdate(item, update);
       await item.save();
-      return item;
-    }
-    return null;
-  }
-
-  static async findByIdAndUpdate(id, update) {
-    const item = await this.findById(id);
-    if (item) {
-      const dataToSet = update.$set || update;
-      Object.assign(item, dataToSet);
-      await item.save();
-      return item;
-    }
-    return null;
-  }
-
-  static async deleteOne(query) {
-    let items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    const initialLength = items.length;
-    items = items.filter(item => !matchesQuery(item, query));
-    if (items.length !== initialLength) {
-      fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
-      return { deletedCount: initialLength - items.length };
-    }
-    return { deletedCount: 0 };
-  }
-
-  static async findOneAndDelete(query) {
-    const item = await this.findOne(query);
-    if (item) {
-      await this.deleteOne({ _id: item._id });
       return item;
     }
     return null;
   }
 
   static async updateMany(query, update) {
-    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    const items = await this.find(query);
     let modifiedCount = 0;
-    const dataToSet = update.$set || update;
-
-    const updatedItems = items.map(item => {
-      if (matchesQuery(item, query)) {
-        modifiedCount++;
-        return { ...item, ...dataToSet, updatedAt: new Date() };
-      }
-      return item;
-    });
-
-    if (modifiedCount > 0) {
-      fs.writeFileSync(DATA_FILE, JSON.stringify(updatedItems, null, 2));
+    for (const item of items) {
+      applyUpdate(item, update);
+      await item.save();
+      modifiedCount++;
     }
     return { modifiedCount };
   }
 
-  static async deleteMany(query) {
-    const items = await this.find(query);
-    let deletedCount = 0;
-    for (const item of items) {
-      await this.deleteOne({ _id: item._id });
-      deletedCount++;
+  static async create(data) {
+    const sl = new SharedLink(data);
+    await sl.save();
+    return sl;
+  }
+
+  static async deleteOne(query) {
+    const item = await this.findOne(query);
+    if (item) {
+      await supabaseService.deleteRecord(item.id || item._id, 'shared_links');
+      return { deletedCount: 1 };
     }
-    return { deletedCount };
+    return { deletedCount: 0 };
+  }
+
+  async deleteOne() {
+    return SharedLink.deleteOne({ id: this.id || this._id });
   }
 
   static async countDocuments(query = {}) {
     const items = await this.find(query);
     return items.length;
-  }
-
-  toObject() {
-    return { ...this };
-  }
-
-  populate() { return this; }
-  sort() { return this; }
-  limit() { return this; }
-  skip() { return this; }
-  select() { return this; }
-
-  async save() {
-    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    this.updatedAt = new Date();
-    const index = items.findIndex(i => i._id === this._id);
-    if (index !== -1) {
-      items[index] = { ...this };
-    } else {
-      items.push({ ...this });
-    }
-    fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
-    return this;
-  }
-
-  static async create(data) {
-    const link = new SharedLink(data);
-    await link.save();
-    return link;
-  }
-
-  static generateToken() {
-    return crypto.randomBytes(32).toString('hex');
-  }
-
-  static generateShortCode() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-    let result = '';
-    for (let i = 0; i < 8; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
-  }
-
-  isValid() {
-    if (this.isRevoked || !this.isActive) return { valid: false, reason: 'Link has been revoked' };
-    if (new Date() > new Date(this.expiresAt)) return { valid: false, reason: 'Link has expired' };
-    if (this.maxViews !== null && this.viewCount >= this.maxViews) return { valid: false, reason: 'Maximum views reached' };
-    return { valid: true };
-  }
-
-  async recordAccess(ipAddress, userAgent) {
-    this.viewCount += 1;
-    this.lastAccessedAt = new Date();
-    this.accessLog.push({
-      accessedAt: new Date(),
-      ipAddress,
-      userAgent,
-    });
-    if (this.accessLog.length > 100) this.accessLog = this.accessLog.slice(-100);
-    return this.save();
   }
 }
 

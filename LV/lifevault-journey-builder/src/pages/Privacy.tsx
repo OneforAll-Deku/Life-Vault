@@ -248,7 +248,7 @@ const Privacy: React.FC = () => {
                   <div className="bg-white p-8 rounded-2xl border border-slate-100 space-y-4">
                     <h2 className="text-xl font-bold text-slate-900">Our Data Privacy Statement</h2>
                     <p className="text-slate-500 leading-relaxed text-sm">
-                      Life Vault uses zero-knowledge architecture. This means your data is encrypted locally on your device before it ever touches our secure network. We cannot read your records, nor can any third party.
+                      Block Pix uses zero-knowledge architecture. This means your data is encrypted locally on your device before it ever touches our secure network. We cannot read your records, nor can any third party.
                     </p>
                     <p className="text-slate-500 leading-relaxed text-sm">
                       By distributing shards across geographic nodes, we ensure that no single node contains enough information to reconstruct your files. Your identity is your key.

@@ -1,123 +1,126 @@
-import fs from 'fs';
-import path from 'path';
 import crypto from 'crypto';
-import { CAMPAIGN_TYPES, QUEST_STATUS } from '../config/constants.js';
-import { matchesQuery, Query } from '../utils/queryHelper.js';
-
-const DATA_FILE = path.join(process.cwd(), 'data', 'campaigns.json');
-
-// Ensure data folder and file exist
-if (!fs.existsSync(path.dirname(DATA_FILE))) {
-  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-}
-if (!fs.existsSync(DATA_FILE)) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify([]));
-}
+import supabaseService from '../services/supabaseService.js';
+import { QUEST_STATUS } from '../config/constants.js';
+import { Query } from '../utils/queryHelper.js';
+import { applyUpdate } from '../utils/modelHelper.js';
 
 class Campaign {
   constructor(data) {
     Object.assign(this, data);
-    this._id = data._id || `camp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    this._id = data._id || data.id || `camp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    this.id = this._id;
     this.name = data.name;
     this.description = data.description || '';
-    this.shortCode = data.shortCode || 'C' + crypto.randomBytes(4).toString('hex').toUpperCase();
-    this.organizationId = data.organizationId;
-    this.organizationType = data.organizationType;
-    this.organizationName = data.organizationName || '';
-    this.organizationLogo = data.organizationLogo || null;
+    this.shortCode = data.shortCode || data.short_code || 'C' + crypto.randomBytes(4).toString('hex').toUpperCase();
+    this.organizationId = data.organizationId || data.organization_id;
+    this.organizationType = data.organizationType || data.organization_type;
+    this.organizationName = data.organizationName || data.organization_name || '';
+    this.organizationLogo = data.organizationLogo || data.organization_logo || null;
     this.website = data.website || '';
-    this.contactEmail = data.contactEmail || '';
-    this.campaignType = data.campaignType;
+    this.contactEmail = data.contactEmail || data.contact_email || '';
+    this.campaignType = data.campaignType || data.campaign_type;
     this.quests = data.quests || [];
-    this.completionRequirements = data.completionRequirements || {
-      minQuestsRequired: null,
-      specificQuestsRequired: [],
-      timeLimit: null,
-      sequentialCompletion: false,
-    };
-    this.grandPrize = data.grandPrize || { enabled: false };
-    this.budget = data.budget || { totalAptAllocated: 0, aptSpent: 0, aptRemaining: 0, maxParticipants: null };
+    this.completionRequirements = data.completionRequirements || data.completion_requirements || { sequentialCompletion: false };
+    this.grandPrize = data.grandPrize || data.grand_prize || { enabled: false };
+    this.budget = data.budget || { totalAptAllocated: 0 };
     this.status = data.status || QUEST_STATUS.DRAFT;
-    this.startDate = data.startDate || null;
-    this.endDate = data.endDate || null;
+    this.startDate = data.startDate || data.start_date || null;
+    this.endDate = data.endDate || data.end_date || null;
     this.timezone = data.timezone || 'UTC';
-    this.targetRegions = data.targetRegions || [];
-    this.stats = data.stats || {
-      totalParticipants: 0,
-      totalCompletions: 0,
-      averageCompletionRate: 0,
-      averageCompletionTime: 0,
-      questCompletionRates: [],
-    };
-    this.coverImage = data.coverImage || null;
-    this.bannerImage = data.bannerImage || null;
-    this.promoVideo = data.promoVideo || null;
+    this.targetRegions = data.targetRegions || data.target_regions || [];
+    this.stats = data.stats || {};
+    this.coverImage = data.coverImage || data.cover_image || null;
+    this.bannerImage = data.bannerImage || data.banner_image || null;
+    this.promoVideo = data.promoVideo || data.promo_video || null;
     this.gallery = data.gallery || [];
-    this.onChainCampaignId = data.onChainCampaignId || null;
-    this.escrowAddress = data.escrowAddress || null;
-    this.txHash = data.txHash || null;
-    this.settings = data.settings || {
-      isPublic: true,
-      requiresRegistration: false,
-      allowLateJoin: true,
-      showLeaderboard: true,
-      showProgress: true,
-    };
+    this.onChainCampaignId = data.onChainCampaignId || data.on_chain_campaign_id || null;
+    this.escrowAddress = data.escrowAddress || data.escrow_address || null;
+    this.txHash = data.txHash || data.tx_hash || null;
+    this.settings = data.settings || { isPublic: true };
     this.tags = data.tags || [];
     this.category = data.category || 'other';
-    this.isVerified = data.isVerified || false;
-    this.verifiedAt = data.verifiedAt || null;
-    this.verifiedBy = data.verifiedBy || null;
-    this.isFeatured = data.isFeatured || false;
-    this.isSponsored = data.isSponsored || false;
-    this.createdAt = data.createdAt || new Date();
-    this.updatedAt = data.updatedAt || new Date();
+    this.isVerified = data.isVerified || data.is_verified || false;
+    this.verifiedAt = data.verifiedAt || data.verified_at || null;
+    this.verifiedBy = data.verifiedBy || data.verified_by || null;
+    this.isFeatured = data.isFeatured || data.is_featured || false;
+    this.isSponsored = data.isSponsored || data.is_sponsored || false;
+    this.createdAt = data.createdAt || data.created_at || new Date();
+    this.updatedAt = data.updatedAt || data.updated_at || new Date();
   }
 
   static find(query = {}) {
-    try {
-      if (!fs.existsSync(DATA_FILE)) return new Query([]);
-      const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-      const results = items.filter(item => matchesQuery(item, query)).map(item => new Campaign(item));
-      return new Query(results);
-    } catch (err) {
-      console.error('Error reading campaigns.json:', err.message);
-      return new Query([]);
-    }
+    const dbQuery = {};
+    if (query.creatorId) dbQuery.creator_id = query.creatorId;
+    if (query.organizationId) dbQuery.organization_id = query.organizationId;
+    if (query.status) dbQuery.status = query.status;
+    if (query.id) dbQuery.id = query.id;
+    if (query._id) dbQuery.id = query._id;
+
+    const promise = supabaseService.find('campaigns', dbQuery).then(data => data.map(c => new Campaign(c)));
+    return new Query(promise, query);
   }
 
-  toObject() {
-    return { ...this };
+  static async findOne(query) {
+    const items = await this.find(query);
+    return items.length > 0 ? items[0] : null;
   }
 
+  static async findById(id) {
+    const data = await supabaseService.getRecord(id, 'campaigns');
+    return data ? new Campaign(data) : null;
+  }
+
+  toObject() { return { ...this }; }
   populate() { return this; }
   sort() { return this; }
   limit() { return this; }
   skip() { return this; }
   select() { return this; }
 
-  static async findOne(query) {
-    const q = this.find(query);
-    const results = await q;
-    return results.length > 0 ? results[0] : null;
-  }
-
-  static async findById(id) {
-    const q = this.find({ _id: id });
-    const results = await q;
-    return results.length > 0 ? results[0] : null;
-  }
-
   async save() {
-    const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
     this.updatedAt = new Date();
-    const index = items.findIndex(i => i._id === this._id);
-    if (index !== -1) {
-      items[index] = { ...this };
-    } else {
-      items.push({ ...this });
-    }
-    fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
+    const dataToSave = {
+      id: this.id || this._id,
+      name: this.name,
+      description: this.description,
+      short_code: this.shortCode,
+      organization_id: this.organizationId,
+      organization_type: this.organizationType,
+      organization_name: this.organizationName,
+      organization_logo: this.organizationLogo,
+      website: this.website,
+      contact_email: this.contactEmail,
+      campaign_type: this.campaignType,
+      quests: this.quests,
+      completion_requirements: this.completionRequirements,
+      grand_prize: this.grandPrize,
+      budget: this.budget,
+      status: this.status,
+      start_date: this.startDate,
+      end_date: this.endDate,
+      timezone: this.timezone,
+      target_regions: this.targetRegions,
+      stats: this.stats,
+      cover_image: this.coverImage,
+      banner_image: this.bannerImage,
+      promo_video: this.promoVideo,
+      gallery: this.gallery,
+      on_chain_campaign_id: this.onChainCampaignId,
+      escrow_address: this.escrowAddress,
+      tx_hash: this.txHash,
+      settings: this.settings,
+      tags: this.tags,
+      category: this.category,
+      is_verified: this.isVerified,
+      verified_at: this.verifiedAt,
+      verified_by: this.verifiedBy,
+      is_featured: this.isFeatured,
+      is_sponsored: this.isSponsored,
+      created_at: this.createdAt,
+      updated_at: this.updatedAt
+    };
+
+    await supabaseService.upsert(dataToSave.id, dataToSave, 'campaigns');
     return this;
   }
 
@@ -137,8 +140,7 @@ class Campaign {
   static async findOneAndUpdate(query, update, options = {}) {
     const item = await this.findOne(query);
     if (item) {
-      const dataToSet = update.$set || update;
-      Object.assign(item, dataToSet);
+      applyUpdate(item, update);
       await item.save();
       return item;
     }
@@ -146,70 +148,44 @@ class Campaign {
   }
 
   static async findByIdAndUpdate(id, update) {
-    return this.findOneAndUpdate({ _id: id }, update);
+    return this.findOneAndUpdate({ id: id }, update);
   }
 
   static async deleteOne(query) {
     const item = await this.findOne(query);
     if (item) {
-      const items = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-      const filtered = items.filter(i => i._id !== item._id);
-      fs.writeFileSync(DATA_FILE, JSON.stringify(filtered, null, 2));
+      await supabaseService.deleteRecord(item.id || item._id, 'campaigns');
       return { deletedCount: 1 };
     }
     return { deletedCount: 0 };
   }
 
   static async deleteMany(query) {
-    const q = this.find(query);
-    const items = await q;
+    const items = await this.find(query);
     let deletedCount = 0;
     for (const item of items) {
-      await this.deleteOne({ _id: item._id });
+      await this.deleteOne({ id: item.id || item._id });
       deletedCount++;
     }
     return { deletedCount };
   }
 
-  static async findOneAndDelete(query) {
-    const item = await this.findOne(query);
-    if (item) {
-      await this.deleteOne({ _id: item._id });
-      return item;
-    }
-    return null;
-  }
-
-  static async updateMany(query, update) {
-    const q = this.find(query);
-    const items = await q;
-    let modifiedCount = 0;
-    const dataToSet = update.$set || update;
-
-    for (const item of items) {
-      Object.assign(item, dataToSet);
-      await item.save();
-      modifiedCount++;
-    }
-    return { modifiedCount };
-  }
-
   static async countDocuments(query = {}) {
-    const q = this.find(query);
-    const items = await q;
+    const items = await this.find(query);
     return items.length;
   }
 
   async getUserProgress(userId) {
+    // Basic implementation since we're using models instead of SQL joins directly
     const QuestCompletion = (await import('./QuestCompletion.js')).default;
     const completedQuests = await QuestCompletion.find({
       userId,
-      campaignId: this._id,
+      campaignId: this.id || this._id,
       status: 'completed'
     });
 
-    const completedQuestIds = new Set(completedQuests.map(q => q.questId?.toString()));
-    const campaignQuestIds = (this.quests || []).map(q => q.questId?.toString());
+    const completedQuestIds = new Set(completedQuests.map(q => (q.questId || q.quest_id)?.toString()));
+    const campaignQuestIds = (this.quests || []).map(q => (q.questId || q.id)?.toString());
 
     const completedCount = campaignQuestIds.filter(id => completedQuestIds.has(id)).length;
     const totalCount = campaignQuestIds.length;
@@ -227,7 +203,19 @@ class Campaign {
   }
 
   async deleteOne() {
-    return Campaign.deleteOne({ _id: this._id });
+    return Campaign.deleteOne({ id: this.id || this._id });
+  }
+
+  static async updateMany(query, update) {
+    const items = await this.find(query);
+    let modifiedCount = 0;
+
+    for (const item of items) {
+      applyUpdate(item, update);
+      await item.save();
+      modifiedCount++;
+    }
+    return { modifiedCount };
   }
 }
 
